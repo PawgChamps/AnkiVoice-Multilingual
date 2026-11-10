@@ -1,6 +1,6 @@
 # AnkiVoice
 
-[![CI](https://github.com/tylerecouture/Ankivoice/actions/workflows/ci.yml/badge.svg)](https://github.com/tylerecouture/Ankivoice/actions/workflows/ci.yml)
+[![CI](https://github.com/PawgChamps/Ankivoice/actions/workflows/ci.yml/badge.svg)](https://github.com/PawgChamps/Ankivoice/actions/workflows/ci.yml)
 
 Hands-free plugin for **AnkiDroid**. It reads each card aloud, listens for
 your voice, and lets you drive a whole review session without touching the phone:
@@ -8,11 +8,22 @@ your voice, and lets you drive a whole review session without touching the phone
 1. The **question** is read aloud. (On the first card of a session it greets you
    first: *"AnkiVoice is on. Say help, to list the voice commands available."*)
 2. You say **"answer"** → the answer is read aloud.
-3. You say a grade: **again / hard / good / easy** and it schedules the card, announces the next interval, and moves on.
+3. A short **chime** tells you the card can be graded.
+4. You say a grade: **again / hard / good / easy** and it schedules the card, announces the next interval, and moves on.
 
 Plus **skip**, **repeat**, **pause** (a timed think-break), **help**, and **off**.
 It also keeps the screen awake while you're actively reviewing and lets it sleep
 when you stop.
+
+**Made for language decks.** The front and back of a card can be read in
+different languages — Japanese question, English answer — and you keep talking
+to it in your own language, whatever the cards are in. See
+[Languages](#languages).
+
+> **This is a fork** of [tylerecouture/Ankivoice](https://github.com/tylerecouture/Ankivoice).
+> It adds per-side card languages (v39), commands and prompts in the phone's
+> language (v39) and the grading chime (v40). Those are only in the releases
+> of this fork.
 
 It's a single JavaScript file loaded from your card templates — **no add-on, no
 separate app**. It runs entirely inside AnkiDroid's built-in JavaScript API.
@@ -25,13 +36,13 @@ separate app**. It runs entirely inside AnkiDroid's built-in JavaScript API.
 
 ## Download
 
-Every version is published as a [GitHub release](https://github.com/tylerecouture/Ankivoice/releases/latest),
+Every version is published as a [GitHub release](https://github.com/PawgChamps/Ankivoice/releases/latest),
 with two files attached:
 
 | File | For |
 |---|---|
 | `_ankivoice.js` | the plugin itself — what you put in `collection.media` |
-| `AnkiVoice-test.apkg` | a 3-card test deck with the script bundled, to try it on the phone |
+| `AnkiVoice-test.apkg` | a 4-card test deck with the script bundled, to try it on the phone. One card has a Japanese front and an English back. |
 
 Releases are built automatically whenever the version changes, so the assets
 always match the source at that tag.
@@ -65,8 +76,34 @@ The easiest path uses **Anki Desktop** once, then syncs to your phone.
    open **Tools → Manage Note Types → Cards…** and paste the contents of
    [`loader.html`](loader.html) at the very bottom of **both** the Front and Back
    templates.
-3. **Sync.** Sync the desktop, then sync AnkiDroid. Study a voiced deck on the
+3. **Say which languages the note type is in** (skip this for English-only
+   cards). Just above the loader, in **both** templates, add one line with your
+   own language codes:
+
+   ```html
+   <script>window.ANKIVOICE_LANG = { front: "ja-JP", back: "en-US" };</script>
+   ```
+
+   The bottom of each template then looks like this:
+
+   ```html
+   <script>window.ANKIVOICE_LANG = { front: "ja-JP", back: "en-US" };</script>
+   <script>
+   (function(){ ... the loader from loader.html ... })();
+   </script>
+   ```
+
+   More examples and the other ways to set a language are under
+   [Languages](#languages).
+4. **Sync.** Sync the desktop, then sync AnkiDroid. Study a voiced deck on the
    phone — the bar appears at the bottom and it starts reading.
+5. **Check it.** The bar should show the version (`AnkiVoice v40`). Tap ⚙: the
+   box at the top lists the language each side is read in and where that came
+   from.
+
+The phone also needs a text-to-speech voice for every language you use: Android
+**Settings → Accessibility → Text-to-speech output**, then the engine's settings
+to install or pick voices. If a voice is missing, the ⚙ box shows a ⚠ line.
 
 ### Updating
 
@@ -87,6 +124,20 @@ templates again**. To update: replace `_ankivoice.js` in `collection.media`
 > bar ("AnkiVoice v30") or the settings panel header.
 
 ## Languages
+
+**In short:** set the language you speak once, in the settings. Set the
+languages of the cards per note type, in its templates. The two are independent.
+
+A worked example — a phone set to Portuguese, three decks:
+
+| Note type | Line in its templates | Front read in | Back read in | You say |
+|---|---|---|---|---|
+| Thai vocabulary | `{ front: "th-TH", back: "en-US" }` | Thai | English | "resposta", "bom" |
+| Goethe German | `{ front: "de-DE", back: "es-ES" }` | German | Spanish | "resposta", "bom" |
+| General knowledge | *(none)* | ⚙ *Speech language* | ⚙ *Speech language* | "resposta", "bom" |
+
+All three can come up in one review session; each card is read in its own
+languages and the commands stay Portuguese throughout.
 
 There are three separate languages, and they do not have to match:
 
@@ -153,6 +204,22 @@ or inside a field's own HTML for a single word: `It means <span lang="de">Hund</
 Everything inside the element, nested elements included, is read in that
 language; the text around it stays in the side's language.
 
+### Card language: different for each note
+
+The template line applies to every card of a note type. If one note type holds
+cards in several languages — a generic "Basic" used for both Thai and German —
+give it a field for the language (say `Lang`, containing `th` or `de` on each
+note) and use it in the template:
+
+```html
+<div lang="{{Lang}}">{{Front}}</div>
+```
+
+A note whose `Lang` field is empty falls back to the template line, then to ⚙.
+
+> These are HTML `lang` attributes, not Anki **tags**. The tags you see in the
+> browser sidebar have no effect on the language.
+
 ### Command language
 
 ⚙ → *Command language*. **auto** uses the phone's language if there is a pack
@@ -161,6 +228,32 @@ otherwise. Pick one explicitly to override. Changing it swaps the built-in
 trigger words (the chips below it) to that language; lists you have edited
 yourself are left alone. Only speech is translated: the bar and the settings
 panel stay in English.
+
+The main word for each command (each has more; they are all listed, and
+editable, as chips in ⚙):
+
+| | English | Português | Español | Français | Deutsch | Italiano |
+|---|---|---|---|---|---|---|
+| reveal | answer | resposta | respuesta | réponse | Antwort | risposta |
+| Again | again | de novo | otra vez | encore | nochmal | di nuovo |
+| Hard | hard | difícil | difícil | difficile | schwer | difficile |
+| Good | good | bom | bien | bien | gut | bene |
+| Easy | easy | fácil | fácil | facile | einfach | facile |
+| bury | skip | pular | saltar | passer | überspringen | salta |
+| re-read | repeat | repetir | repetir | répéter | wiederholen | ripeti |
+| think-break | pause | pausa | pausa | pause | Pause | pausa |
+| commands | help | ajuda | ayuda | aide | Hilfe | aiuto |
+| voice off | off | desligar | apagar | éteindre | ausschalten | spegni |
+| stop listening | stop | parar | parar | stop | stopp | stop |
+
+Say **help** (in your language) at any time to hear them. If the phone's
+recognizer keeps mishearing a word, turn on *Voice test*, say it, and add what
+it heard with one tap — see [Self-tuning recognition](#self-tuning-recognition).
+
+**Updating from v38 or earlier on a non-English phone:** if the phone is set to
+Portuguese, Spanish, French, German or Italian, the prompts and command words
+switch to that language after the update. To keep English, set
+⚙ → *Command language* → `en-US`.
 
 There is no pack for Japanese, Chinese or Thai: commands are matched as whole
 words, and those recognizers do not put spaces between words.
@@ -183,6 +276,10 @@ tag also makes AnkiDroid speak the field itself, on top of AnkiVoice; remove it
 from note types you voice with AnkiVoice.
 
 ## Voice commands
+
+The words below are the English ones. On a phone set to Portuguese, Spanish,
+French, German or Italian they are in that language — see the table under
+[Command language](#command-language).
 
 | Say | Does |
 |---|---|
@@ -424,6 +521,37 @@ LICENSE              MIT
 This plugin looks the way it does because of hard constraints in how AnkiDroid
 exposes speech to card JavaScript. If something feels like a workaround, it
 probably is — here's the reasoning.
+
+**My Japanese card is read by an English voice (or the other way round).**
+Open ⚙ and read the box at the top. It shows, for the side you are on, the
+language of every chunk that was read and where it came from.
+
+- *global setting* next to the card text means the template line is missing or
+  misspelled on that note type — check it is in **both** the Front and Back
+  template, above the loader.
+- A ⚠ line means the phone's text-to-speech engine has no voice for that
+  language, so it carried on in the previous one. Install the voice in Android's
+  text-to-speech settings.
+- If the box shows the right language and the voice is still wrong, the
+  text-to-speech engine is ignoring the request; try another engine.
+
+**Which voice reads the cards?**
+Whatever Android text-to-speech engine the phone is set to use (Google's, the
+maker's, or one you installed). AnkiVoice only asks for a language, such as
+`ja-JP`; the engine picks the voice. To change the voice for a language, change
+it in that engine's settings.
+
+**I still hear "Mark it." instead of the chime.**
+The first answer of a session always speaks the grade words once. After that,
+"Mark it." means the chime could not play — the WebView did not let the page
+make sound — and AnkiVoice fell back to speech rather than leave you without a
+cue. ⚙ → *Chime instead of "Mark it"* chooses between the two.
+
+**It speaks to me in my phone's language, and I want English.**
+⚙ → *Command language* → `en-US`.
+
+**Can it use Anki's own `{{tts}}` tags?**
+No — see [Anki's own `{{tts}}` tags](#ankis-own-tts-tags).
 
 **Why does the microphone beep on and off while I review?**
 The beeps are Google's. AnkiDroid's speech recognition is Android's stock

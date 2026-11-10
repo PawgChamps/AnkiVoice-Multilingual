@@ -69,6 +69,8 @@ One IIFE in `_ankivoice.js`, roughly in this order:
   again, per hypothesis. `rememberHeard` / `recentHeard` keep the last 24 heard
   words so the settings panel can offer one-tap "add this mis-hear" chips.
 - **`commandsText`** — spoken command help / first-card prompt.
+- **`chime` / `chimeNote`** — the Web Audio grade cue. `chime()` resolves `true`
+  only if it really played; `gradeCue` speaks "Mark it." otherwise.
 - **`startFlow(resume)`** — the per-card state machine. Uses a generation counter
   (`window.__avGen` + local `myGen`, `dead()`) to invalidate stale async work, a
   per-flow `listening` flag to guarantee one recognizer at a time, `speak`,
