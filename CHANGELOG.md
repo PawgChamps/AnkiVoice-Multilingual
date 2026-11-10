@@ -19,6 +19,11 @@ can now grade the card is a short, soft two-note chime rather than the spoken
   to make sound - AnkiVoice says "Mark it." exactly as before, rather than
   leaving you with silence.
 - ⚙ → *Chime instead of "Mark it"* turns it off.
+- **"Help" explains it.** On the question side, help now also says: "After the
+  answer is read, a chime sounds. Then say again, hard, good, or easy, to mark
+  the card." And the once-a-session grade prompt ends with "From the next card
+  on, a chime means the same." Both follow the command language and the
+  setting.
 - Not verified on a device: whether AnkiDroid's WebView lets the page play it.
   If you still hear "Mark it." with the setting on, that is the fallback.
 

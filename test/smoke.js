@@ -853,6 +853,31 @@ const silence = () => JSON.stringify({ success: false, value: "No speech input" 
     ok("...and no chime plays", state.notes.length === 0);
   }
   {
+    // help says what the chime is for, and the first answer announces it
+    const { win, state } = await boot("<div>Q</div>");
+    win.ankiSttResult(heard("help"));
+    await wait(300);
+    ok("help explains the chime and the grade words",
+       state.spoken.join(" ").includes("a chime sounds. Then say again, hard, good, or easy, to mark the card."));
+    const first = await boot(ANS, { onAnswer: true, storage: { av_qlines: seen.av_qlines } });
+    ok("the first answer says the chime comes next", first.state.spoken.some((t) => t.includes("From the next card on, a chime means the same.")));
+  }
+  {
+    const { win, state } = await boot("<div>Q</div>", { cfg: { gradeChime: false } });
+    win.ankiSttResult(heard("help"));
+    await wait(300);
+    ok("with the chime off, help describes the spoken cue instead",
+       state.spoken.join(" ").includes("I say mark it.") && !state.spoken.join(" ").includes("chime"));
+    const first = await boot(ANS, { onAnswer: true, cfg: { gradeChime: false }, storage: { av_qlines: seen.av_qlines } });
+    ok("...and the first answer does not promise a chime", !first.state.spoken.join(" ").includes("chime"));
+  }
+  {
+    const { win, state } = await boot("<div>Q</div>", { sysLang: "de-DE" });
+    win.ankiSttResult(heard("hilfe"));
+    await wait(300);
+    ok("the grading help is translated", state.spoken.join(" ").includes("Nach der Antwort ert\u00F6nt ein Klang."));
+  }
+  {
     // the cue follows the command language when it has to be spoken
     const { state } = await boot(ANS, { onAnswer: true, sysLang: "pt-BR", storage: seen });
     ok("the spoken fallback is in the command language", state.spoken.some((t) => t === "Avalie."));

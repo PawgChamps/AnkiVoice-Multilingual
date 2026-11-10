@@ -13,7 +13,8 @@
            still reads out the grade words once. If the chime cannot play
            (no Web Audio, or the page is not allowed to make sound) it falls
            back to saying "Mark it.", and the new "Chime instead of Mark it"
-           setting turns it off.
+           setting turns it off. "Help" now also explains grading: after
+           the answer a chime sounds, then say again, hard, good or easy.
      v39 - per-side and per-chunk speech languages, for language decks. A
            template can declare window.ANKIVOICE_LANG = { front: "ja-JP",
            back: "en-US" } and each side is read in its own language; an
@@ -194,6 +195,9 @@
         helpIntro: "Voice commands. Say answer, to reveal the answer.",
         helpDetect: " Or just say the answer itself, and if it's right I'll mark it good.",
         helpRest: " Say skip, to bury the card and come back to it later. Say pause, to pause the microphone for {n} seconds while you think. Say off, to turn the voice off until you tap the bar. Say help, to hear these commands again.",
+        helpGradeChime: " After the answer is read, a chime sounds. Then say again, hard, good, or easy, to mark the card.",
+        helpGradeSpoken: " After the answer is read, I say mark it. Then say again, hard, good, or easy, to mark the card.",
+        chimeNext: " From the next card on, a chime means the same.",
         markIt: "Mark it.",
         marked: "Marked {g}",
         nextIn: ", next review in {t}",
@@ -240,6 +244,9 @@
         helpIntro: "Comandos de voz. Diga resposta, para revelar a resposta.",
         helpDetect: " Ou diga a pr\u00f3pria resposta e, se estiver certa, eu marco como bom.",
         helpRest: " Diga pular, para enterrar o cart\u00e3o e voltar a ele mais tarde. Diga pausa, para pausar o microfone por {n} segundos enquanto pensa. Diga desligar, para desligar a voz at\u00e9 tocar na barra. Diga ajuda, para ouvir estes comandos de novo.",
+        helpGradeChime: " Depois de ouvir a resposta, toca um sinal sonoro. Ent\u00e3o diga de novo, dif\u00edcil, bom, ou f\u00e1cil, para avaliar o cart\u00e3o.",
+        helpGradeSpoken: " Depois de ler a resposta, eu digo avalie. Ent\u00e3o diga de novo, dif\u00edcil, bom, ou f\u00e1cil, para avaliar o cart\u00e3o.",
+        chimeNext: " A partir do pr\u00f3ximo cart\u00e3o, um sinal sonoro significa o mesmo.",
         markIt: "Avalie.",
         marked: "Marcado como {g}",
         nextIn: ", pr\u00f3xima revis\u00e3o em {t}",
@@ -286,6 +293,9 @@
         helpIntro: "Comandos de voz. Di respuesta, para mostrar la respuesta.",
         helpDetect: " O di la respuesta directamente y, si es correcta, la marco como bien.",
         helpRest: " Di saltar, para enterrar la tarjeta y volver a ella m\u00e1s tarde. Di pausa, para pausar el micr\u00f3fono durante {n} segundos mientras piensas. Di apagar, para apagar la voz hasta que toques la barra. Di ayuda, para escuchar estos comandos otra vez.",
+        helpGradeChime: " Despu\u00e9s de leer la respuesta, suena un tono. Entonces di otra vez, dif\u00edcil, bien, o f\u00e1cil, para calificar la tarjeta.",
+        helpGradeSpoken: " Despu\u00e9s de leer la respuesta, digo califica. Entonces di otra vez, dif\u00edcil, bien, o f\u00e1cil, para calificar la tarjeta.",
+        chimeNext: " A partir de la siguiente tarjeta, un tono significa lo mismo.",
         markIt: "Califica.",
         marked: "Marcada como {g}",
         nextIn: ", pr\u00f3ximo repaso en {t}",
@@ -332,6 +342,9 @@
         helpIntro: "Commandes vocales. Dites r\u00e9ponse, pour afficher la r\u00e9ponse.",
         helpDetect: " Ou dites directement la r\u00e9ponse et, si elle est juste, je la note bien.",
         helpRest: " Dites passer, pour enterrer la carte et y revenir plus tard. Dites pause, pour couper le micro pendant {n} secondes le temps de r\u00e9fl\u00e9chir. Dites \u00e9teindre, pour couper la voix jusqu'\u00e0 ce que vous touchiez la barre. Dites aide, pour r\u00e9entendre ces commandes.",
+        helpGradeChime: " Apr\u00e8s la lecture de la r\u00e9ponse, un carillon retentit. Dites alors encore, difficile, bien, ou facile, pour noter la carte.",
+        helpGradeSpoken: " Apr\u00e8s la lecture de la r\u00e9ponse, je dis notez. Dites alors encore, difficile, bien, ou facile, pour noter la carte.",
+        chimeNext: " \u00c0 partir de la carte suivante, un carillon voudra dire la m\u00eame chose.",
         markIt: "Notez.",
         marked: "Not\u00e9e {g}",
         nextIn: ", prochaine r\u00e9vision dans {t}",
@@ -378,6 +391,9 @@
         helpIntro: "Sprachbefehle. Sag Antwort, um die Antwort zu zeigen.",
         helpDetect: " Oder sag einfach die Antwort selbst, und wenn sie stimmt, bewerte ich sie mit gut.",
         helpRest: " Sag \u00fcberspringen, um die Karte zu begraben und sp\u00e4ter darauf zur\u00fcckzukommen. Sag Pause, um das Mikrofon f\u00fcr {n} Sekunden anzuhalten, w\u00e4hrend du nachdenkst. Sag ausschalten, um die Stimme auszuschalten, bis du auf die Leiste tippst. Sag Hilfe, um diese Befehle noch einmal zu h\u00f6ren.",
+        helpGradeChime: " Nach der Antwort ert\u00f6nt ein Klang. Sag dann nochmal, schwer, gut, oder einfach, um die Karte zu bewerten.",
+        helpGradeSpoken: " Nach der Antwort sage ich: bewerte. Sag dann nochmal, schwer, gut, oder einfach, um die Karte zu bewerten.",
+        chimeNext: " Ab der n\u00e4chsten Karte bedeutet ein Klang dasselbe.",
         markIt: "Bewerte.",
         marked: "Bewertet mit {g}",
         nextIn: ", n\u00e4chste Wiederholung in {t}",
@@ -424,6 +440,9 @@
         helpIntro: "Comandi vocali. Di' risposta, per mostrare la risposta.",
         helpDetect: " Oppure di' direttamente la risposta e, se \u00e8 giusta, la segno come bene.",
         helpRest: " Di' salta, per seppellire la carta e tornarci pi\u00f9 tardi. Di' pausa, per mettere in pausa il microfono per {n} secondi mentre pensi. Di' spegni, per spegnere la voce finch\u00e9 non tocchi la barra. Di' aiuto, per riascoltare questi comandi.",
+        helpGradeChime: " Dopo la lettura della risposta, suona un segnale. Poi di' di nuovo, difficile, bene, o facile, per valutare la carta.",
+        helpGradeSpoken: " Dopo la lettura della risposta, dico valuta. Poi di' di nuovo, difficile, bene, o facile, per valutare la carta.",
+        chimeNext: " Dalla prossima carta, un segnale avr\u00e0 lo stesso significato.",
         markIt: "Valuta.",
         marked: "Segnata come {g}",
         nextIn: ", prossima ripetizione tra {t}",
@@ -1115,8 +1134,10 @@
   // already know them; "help" still gives the full list whenever you want it.
   // (The greeting is T("greeting"); every spoken string lives in AV_L10N.)
   function commandsText(onAns) {
-    if (onAns) return T("gradeHelp");
-    return T("helpIntro") + (CFG.detectAnswer ? T("helpDetect") : "") + T("helpRest", { n: CFG.pauseSeconds });
+    // Spoken once per session, on the first answer: after it the chime takes over.
+    if (onAns) return T("gradeHelp") + (CFG.gradeChime ? T("chimeNext") : "");
+    return T("helpIntro") + (CFG.detectAnswer ? T("helpDetect") : "") +
+      T(CFG.gradeChime ? "helpGradeChime" : "helpGradeSpoken") + T("helpRest", { n: CFG.pauseSeconds });
   }
 
   // A command triggers if the heard text contains any word from its editable list
