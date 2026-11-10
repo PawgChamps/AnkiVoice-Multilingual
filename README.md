@@ -217,6 +217,9 @@ Every trigger word above is **editable in Settings** (see below).
     while still reviewing normally.
   - **Speech / command / recognition language** — see [Languages](#languages).
     The box at the top of the panel shows which language is in force and why.
+  - **Chime instead of "Mark it"** — after the answer, a short chime tells you
+    the card can be graded. Turn it off to hear "Mark it." instead (which is
+    also what you get if the phone will not let the page play the chime).
   - **Announce next interval** — turn it off to grade faster (it skips
     "next review in four days" after each card).
   - **Unknown replies before pausing** — how much unrecognized speech to tolerate

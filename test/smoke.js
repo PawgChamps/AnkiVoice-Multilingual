@@ -105,6 +105,21 @@ async function boot(html, opts) {
   win.AnkiDroidJS = makeApi(state);
   if (opts.langCfg !== undefined) win.ANKIVOICE_LANG = opts.langCfg;      // what the template's <script> line does
   if (opts.sysLang) Object.defineProperty(win.navigator, "language", { value: opts.sysLang, configurable: true });
+  // jsdom has no Web Audio. opts.audio installs a fake: "running" plays,
+  // "blocked" stays suspended with a resume() that never settles (what a
+  // WebView does when the page may not make sound).
+  if (opts.audio) {
+    state.notes = [];
+    win.AudioContext = class {
+      constructor() { this.state = opts.audio === "running" ? "running" : "suspended"; this.currentTime = 0; this.destination = {}; }
+      resume() { return new Promise(() => {}); }
+      createOscillator() {
+        const o = { frequency: { value: 0 }, connect() {}, start() { state.notes.push(o.frequency.value); }, stop() {} };
+        return o;
+      }
+      createGain() { return { gain: { setValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect() {} }; }
+    };
+  }
   win.HTMLMediaElement.prototype.play = function () { return Promise.resolve(); };
   win.addEventListener("error", (e) => state.errors.push("error: " + e.message));
   win.addEventListener("unhandledrejection", (e) => state.errors.push("rejection: " + e.reason));
@@ -800,6 +815,47 @@ const silence = () => JSON.stringify({ success: false, value: "No speech input" 
     const saved = JSON.parse(win.localStorage.getItem("av_cfg"));
     ok("only the choice is saved, not the German defaults", saved.uiLang === "de-DE" && !("words_hard" in saved) && saved.words_easy === "peasy");
     ok("the language box follows", doc.getElementById("av-langinfo").textContent.includes("Commands & prompts: de-DE (global setting)"));
+  }
+
+  // =====================================================================
+  // v40: the grade cue is a chime, with "Mark it." as the fallback
+  // =====================================================================
+  const ANS = '<div>Capital of Mali?</div><hr id="answer"><div>Bamako</div>';
+  // av_ts keeps the session alive; without it av_adone is reset as "idle for 5 minutes"
+  const seen = { av_qlines: JSON.stringify(["Capital of Mali?"]), av_adone: "1", av_ts: String(Date.now()) };
+  {
+    const { win, state } = await boot(ANS, { onAnswer: true, audio: "running", storage: seen, settle: 1300 });
+    ok("the chime plays two notes", state.notes.length === 2 && state.notes[1] > state.notes[0]);
+    ok("...instead of saying Mark it", !state.spoken.some((t) => t.indexOf("Mark it") >= 0));
+    ok("the answer is still read", state.spoken.some((t) => t.includes("Bamako")));
+    ok("the mic opens after the chime", state.micStarts === 1);
+    win.ankiSttResult(heard("good"));
+    await wait(400);
+    ok("grading after a chime works", state.graded[0] === 3);
+  }
+  {
+    // first answer of a session: the grade words are spoken once, no chime yet
+    const { state } = await boot(ANS, { onAnswer: true, audio: "running", storage: { av_qlines: seen.av_qlines }, settle: 900 });
+    ok("the first answer of a session still names the grades", state.spoken.some((t) => t.indexOf("again, hard, good, or easy") >= 0));
+    ok("...without a chime on top", state.notes.length === 0);
+  }
+  {
+    // sound blocked: the context never starts running
+    const { state } = await boot(ANS, { onAnswer: true, audio: "blocked", storage: seen, settle: 1500 });
+    ok("a blocked chime plays nothing", state.notes.length === 0);
+    ok("...and falls back to saying Mark it", state.spoken.some((t) => t.indexOf("Mark it") >= 0));
+    ok("...and the mic still opens", state.micStarts === 1);
+    ok("...with no error", state.errors.length === 0);
+  }
+  {
+    const { state } = await boot(ANS, { onAnswer: true, audio: "running", storage: seen, cfg: { gradeChime: false }, settle: 900 });
+    ok("with the setting off, Mark it is spoken", state.spoken.some((t) => t.indexOf("Mark it") >= 0));
+    ok("...and no chime plays", state.notes.length === 0);
+  }
+  {
+    // the cue follows the command language when it has to be spoken
+    const { state } = await boot(ANS, { onAnswer: true, sysLang: "pt-BR", storage: seen });
+    ok("the spoken fallback is in the command language", state.spoken.some((t) => t === "Avalie."));
   }
 
   // ---------- off-AnkiDroid: hide, and leave the card alone ----------

@@ -3,11 +3,17 @@
    FILE: _ankivoice.js  -- filename is STABLE; never rename it. To update, replace
    THIS FILE'S CONTENTS in collection.media (desktop) and sync. Versions below.
 
-   VERSION: 39
+   VERSION: 40
 
    SETTINGS: see the CFG block below.
 
    CHANGELOG:
+     v40 - the grading cue is now a short two-note chime instead of the
+           spoken "Mark it." on every card. The first answer of a session
+           still reads out the grade words once. If the chime cannot play
+           (no Web Audio, or the page is not allowed to make sound) it falls
+           back to saying "Mark it.", and the new "Chime instead of Mark it"
+           setting turns it off.
      v39 - per-side and per-chunk speech languages, for language decks. A
            template can declare window.ANKIVOICE_LANG = { front: "ja-JP",
            back: "en-US" } and each side is read in its own language; an
@@ -159,7 +165,7 @@
   // Must match the VERSION in the header comment above; a test asserts they agree.
   // The point is to be able to tell, on the phone, which script is actually
   // running - media-name collisions make that genuinely ambiguous otherwise.
-  var AV_VERSION = 39;
+  var AV_VERSION = 40;
 
   // ---------------- languages (data) ----------------
   // These sit above the settings because loading the settings needs them: the
@@ -463,6 +469,7 @@
     voiceTest: false,           // diagnostic: show what the recognizer heard, without acting on it
     maxNoMatchTries: 12,        // recognized-but-unmatched replies before auto-pausing (noise guard)
     announceInterval: true,     // speak the next review interval after grading
+    gradeChime: true,           // play a chime as the "you can grade now" cue instead of saying "Mark it."
     ttsLang: "en-US",           // spoken language, BCP-47 (ankiTtsSetLanguage). The fallback when
                                 //   neither a lang attribute nor window.ANKIVOICE_LANG says
                                 //   otherwise.
@@ -1217,6 +1224,47 @@
     };
   }
 
+  // ---------------- grading chime ----------------
+  // Two soft rising notes, synthesised with Web Audio so there is no sound file
+  // to install. Resolves true only if it really played: a WebView that will not
+  // let the page make sound leaves the context suspended, and the caller then
+  // falls back to the spoken cue rather than leaving the user with silence.
+  var audioCtx = null;
+  function chimeNote(freq, at, len) {
+    var osc = audioCtx.createOscillator(), gain = audioCtx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.0001, at);
+    gain.gain.exponentialRampToValueAtTime(0.22, at + 0.02);     // soft attack, no click
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + len);    // bell-like decay
+    osc.connect(gain); gain.connect(audioCtx.destination);
+    osc.start(at); osc.stop(at + len + 0.05);
+  }
+  function chime() {
+    return new Promise(function (resolve) {
+      var settled = false;
+      function done(v) { if (!settled) { settled = true; resolve(v); } }
+      try {
+        var AC = window.AudioContext || window.webkitAudioContext;
+        if (!AC) return done(false);
+        if (!audioCtx) audioCtx = new AC();
+        var play = function () {
+          if (settled) return;
+          if (audioCtx.state !== "running") return done(false);
+          var t = audioCtx.currentTime + 0.03;
+          chimeNote(880, t, 0.35);                // A5
+          chimeNote(1318.51, t + 0.13, 0.5);      // E6, a fifth above
+          setTimeout(function () { done(true); }, 700);
+        };
+        if (audioCtx.state === "suspended" && audioCtx.resume) {
+          // resume() can stay pending forever when sound is blocked
+          setTimeout(function () { done(false); }, 500);
+          audioCtx.resume().then(play, function () { done(false); });
+        } else play();
+      } catch (e) { done(false); }
+    });
+  }
+
   // ---------------- per-card flow ----------------
   // resume === true: the current side has already been read aloud (the user tapped
   // to un-pause, or closed the settings panel), so go straight to the microphone
@@ -1319,7 +1367,10 @@
     async function gradeCue() {
       var aDone = lsGet("av_adone") === "1";
       lsSet("av_adone", "1");
-      await speak(aDone ? T("markIt") : commandsText(true));
+      // First answer of a session: say the grade words once. After that a
+      // chime is enough - and if it cannot play, say "Mark it." as before.
+      if (!aDone) await speak(commandsText(true));
+      else if (!(CFG.gradeChime && await chime())) { if (dead()) return; await speak(T("markIt")); }
       if (dead()) return;
       var ms = CFG.markMicDelayMs;
       if (ms >= 1000) {
@@ -1578,6 +1629,7 @@
     { k: "voiceTest",           label: "Voice test (show heard words)", type: "bool" },
     { k: "rememberAnswers",     label: "Remember answers (adds tags)", type: "bool" },
     { k: "announceInterval",    label: "Announce next interval",       type: "bool" },
+    { k: "gradeChime",          label: "Chime instead of \"Mark it\"",  type: "bool" },
     { k: "maxNoMatchTries",     label: "Unknown replies before pausing", type: "num", min: 2, max: 40, step: 1, unit: "" },
     { k: "ttsLang",  label: "Speech language", type: "text", ph: "e.g. en-US, fr-FR, de-DE", opts: AV_LANGS },
     { k: "uiLang",   label: "Command language", type: "text", ph: "auto = the phone's language", opts: AV_CMD_LANGS, after: cmdLangChanged },

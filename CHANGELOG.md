@@ -2,7 +2,25 @@
 
 Versions are tracked in the header of `_ankivoice.js` and mirrored here.
 
-Current: **v39**
+Current: **v40**
+
+## v40
+
+**A chime instead of "Mark it."** After the answer is read, the cue that you
+can now grade the card is a short, soft two-note chime rather than the spoken
+"Mark it." on every single card.
+
+- The first answer of a session still says the grade words once ("Mark it:
+  again, hard, good, or easy."), so the options are heard before the chime
+  replaces them.
+- The chime is generated in the page (Web Audio), so there is no sound file to
+  install or sync.
+- If it cannot play - no Web Audio in the WebView, or the page is not allowed
+  to make sound - AnkiVoice says "Mark it." exactly as before, rather than
+  leaving you with silence.
+- ⚙ → *Chime instead of "Mark it"* turns it off.
+- Not verified on a device: whether AnkiDroid's WebView lets the page play it.
+  If you still hear "Mark it." with the setting on, that is the fallback.
 
 ## v39
 

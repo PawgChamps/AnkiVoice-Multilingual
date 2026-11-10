@@ -271,6 +271,17 @@ verified by reading the AnkiDroid source (branch `v2.24.0`).
   words; those recognizers return unsegmented text. A pack would need substring
   matching, with its own false-positive problem.
 
+- **The grade cue is a synthesised chime, with speech as the fallback.**
+  Saying "Mark it." after every answer is slow and wearing. v40 plays two sine
+  notes through Web Audio instead - no media file, so nothing to install, sync
+  or collide. `chime()` resolves `true` only when the `AudioContext` is
+  actually `running`; a suspended context (sound blocked) or a `resume()` that
+  never settles resolves `false`, and `gradeCue` then speaks "Mark it." A cue
+  that silently fails would leave the user waiting with no idea the mic is
+  about to open, which is worse than the words. **Not verified on a device.**
+  DECISIONS already records that media autoplay is allowed in the reviewer
+  WebView, which suggests Web Audio will run, but nobody has heard it there.
+
 ## Proposed upstream patch (fewer beeps, no getUserMedia needed)
 
 In `JavaScriptSTT.kt`, add silence-length extras to the recognition intent and
