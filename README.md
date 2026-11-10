@@ -44,10 +44,11 @@ always match the source at that tag.
 - AnkiDroid granted the **Microphone** permission (Android app settings).
 - AnkiDroid setting **Reviewing → "Show next review time above answer buttons"**
   turned on (that's the data the plugin reads to announce intervals).
-- English cards by default. The spoken and recognition languages are both
-  settings now (⚙ → *Speech language* / *Recognition language*), so a French deck
-  can be read in French; whether the *recognition* language can be changed
-  depends on your AnkiDroid build, and it falls back to the device default.
+- English cards by default. Each note type can say which language its front and
+  back are read in — see [Languages](#languages). Commands and prompts follow
+  the phone's language where AnkiVoice has a pack for it.
+- An Android text-to-speech engine with a voice for every language you want
+  read (Settings → Accessibility → Text-to-speech).
 
 ## Install
 
@@ -85,6 +86,102 @@ templates again**. To update: replace `_ankivoice.js` in `collection.media`
 > desktop and sync. Check which version is actually running by looking at the
 > bar ("AnkiVoice v30") or the settings panel header.
 
+## Languages
+
+There are three separate languages, and they do not have to match:
+
+| | What it is | Where it comes from |
+|---|---|---|
+| **Card language** | the voice each chunk of card text is read in | `lang` attribute → template → ⚙ *Speech language* |
+| **Command language** | AnkiVoice's own prompts, and the words it listens for | ⚙ *Command language* (default: the phone's language) |
+| **Recognition language** | what the microphone expects to hear | ⚙ *Recognition language* (default: same as commands) |
+
+So a phone set to Portuguese can review a deck with Thai on the front and
+English on the back, and still be told "Avalie" and answer "bom".
+
+### Card language: per side, per note type
+
+Paste one line just above the loader, in **both** the Front and Back template,
+with the same content in each:
+
+```html
+<script>window.ANKIVOICE_LANG = { front: "ja-JP", back: "en-US" };</script>
+```
+
+`front` is the language of the question side. `back` is the language of the
+answer — the text that was not already on the question side. Some ready-made
+ones:
+
+```html
+<!-- Japanese -> English -->
+<script>window.ANKIVOICE_LANG = { front: "ja-JP", back: "en-US" };</script>
+
+<!-- German -> English -->
+<script>window.ANKIVOICE_LANG = { front: "de-DE", back: "en-US" };</script>
+
+<!-- English -> Japanese (the reverse card of the first one) -->
+<script>window.ANKIVOICE_LANG = { front: "en-US", back: "ja-JP" };</script>
+
+<!-- Both sides in one language -->
+<script>window.ANKIVOICE_LANG = "fr-FR";</script>
+
+<!-- Thai -> English, and this note type's commands are heard as Portuguese -->
+<script>window.ANKIVOICE_LANG = { front: "th-TH", back: "en-US", stt: "pt-BR" };</script>
+```
+
+Notes:
+
+- A note type with two card types in opposite directions needs the line in each
+  card type's templates, with `front` and `back` swapped.
+- Leave a side out and it uses ⚙ *Speech language*.
+- Codes are forgiving: `ja`, `ja_JP` and `ja-JP` all work. A bare language gets
+  its usual region (`en` → `en-US`, `de` → `de-DE`, `pt` → `pt-BR`); write the
+  region if you want another. Something that is not a language code is ignored.
+- `stt` is optional and rarely needed; without it recognition follows ⚙.
+
+### Card language: one chunk at a time
+
+Standard HTML `lang` attributes are honoured anywhere inside the card, and win
+over the template line. Use them in a template around a field:
+
+```html
+{{English}}
+<div lang="ja">{{Reading}}</div>
+```
+
+or inside a field's own HTML for a single word: `It means <span lang="de">Hund</span>.`
+Everything inside the element, nested elements included, is read in that
+language; the text around it stays in the side's language.
+
+### Command language
+
+⚙ → *Command language*. **auto** uses the phone's language if there is a pack
+for it — English, Portuguese, Spanish, French, German, Italian — and English
+otherwise. Pick one explicitly to override. Changing it swaps the built-in
+trigger words (the chips below it) to that language; lists you have edited
+yourself are left alone. Only speech is translated: the bar and the settings
+panel stay in English.
+
+There is no pack for Japanese, Chinese or Thai: commands are matched as whole
+words, and those recognizers do not put spaces between words.
+
+### Checking it on the phone
+
+Open ⚙. The box at the top shows, for the side you are on, the language of the
+front and back and where each came from (*template* or *global setting*), the
+command and recognition languages, and each chunk that was read with its
+language and source (*lang attribute* / *template* / *global setting*). If the
+phone's text-to-speech engine has no voice for a language, a ⚠ line says so —
+the text is then read in whatever language came before.
+
+### Anki's own `{{tts}}` tags
+
+A `{{tts ja_JP:Field}}` tag is **not** picked up. AnkiDroid replaces it with a
+play button before the card's JavaScript runs, so neither the language nor the
+text is in the page. Use the template line or a `lang` attribute instead. Such a
+tag also makes AnkiDroid speak the field itself, on top of AnkiVoice; remove it
+from note types you voice with AnkiVoice.
+
 ## Voice commands
 
 | Say | Does |
@@ -118,7 +215,8 @@ Every trigger word above is **editable in Settings** (see below).
     field for where it does, and **Reset defaults** restores the built-in lists.
   - **Voice test** — shows the recognizer's raw guesses for whatever you say,
     while still reviewing normally.
-  - **Speech / recognition language** for non-English decks.
+  - **Speech / command / recognition language** — see [Languages](#languages).
+    The box at the top of the panel shows which language is in force and why.
   - **Announce next interval** — turn it off to grade faster (it skips
     "next review in four days" after each card).
   - **Unknown replies before pausing** — how much unrecognized speech to tolerate

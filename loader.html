@@ -6,7 +6,14 @@
      A plain <script src="_ankivoice.js"></script> ought to work here and would be
      simpler, but this fetch+eval form is the one that has actually been verified
      on-device, and it surfaces a load failure on screen instead of failing
-     silently. See docs/DECISIONS.md before swapping it. -->
+     silently. See docs/DECISIONS.md before swapping it.
+
+     LANGUAGES (optional): to have each side read in its own language, add this
+     line just above the loader, in BOTH templates, with your own codes:
+
+       <script>window.ANKIVOICE_LANG = { front: "ja-JP", back: "en-US" };</script>
+
+     See "Languages" in the README. -->
 <script>
 (function(){
   function boot(){

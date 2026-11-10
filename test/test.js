@@ -48,6 +48,19 @@ eval(grabVar("AV_BLOCK"));
 eval(grabVar("AV_UNITS"));
 eval(grabVar("AV_PUNCT"));
 eval(grabVar("AV_STOPWORDS"));
+eval(grabVar("AV_LANGS"));
+eval(grabVar("AV_LANG_ALIAS"));
+eval(grabVar("AV_L10N"));
+eval(grab("langAttr"));
+eval(grab("isReplayButton"));
+eval(grab("textPieces"));
+eval(grab("lineTidy"));
+eval(grab("extractLangLines"));
+eval(grab("normLang"));
+eval(grab("templateLangs"));
+eval(grab("sideLang"));
+eval(grab("speechSegments"));
+eval(grab("resolveCmdLang"));
 eval(grab("textWithBreaks"));
 eval(grab("extractLines"));
 eval(grab("speechJoin"));
@@ -328,6 +341,149 @@ function tableBetween(startMarker, endMarker) {
   }
   ok("the quick-reference table was checked (" + checked + " cells)", checked >= 20);
 })();
+
+// ---------------- languages: locale normalization ----------------
+// An element with attributes, for the lang-aware walker.
+const EL = (tag, kids, attrs) => ({
+  nodeType: 1, tagName: tag.toUpperCase(), id: (attrs && attrs.id) || "", childNodes: kids || [],
+  getAttribute: (n) => (attrs && n in attrs ? attrs[n] : null),
+});
+eq("normLang keeps a full tag", normLang("ja-JP"), "ja-JP");
+eq("normLang accepts Anki's underscore form", normLang("ja_JP"), "ja-JP");
+eq("normLang fixes case", normLang("JA-jp"), "ja-JP");
+eq("normLang gives a bare language its usual region", normLang("ja"), "ja-JP");
+eq("normLang: bare en is en-US, not en-GB", normLang("en"), "en-US");
+eq("normLang: bare de is de-DE", normLang("de"), "de-DE");
+eq("normLang: bare pt is pt-BR", normLang("pt"), "pt-BR");
+eq("normLang keeps an explicit region", normLang("pt_PT"), "pt-PT");
+eq("normLang trims", normLang("  fr-CA "), "fr-CA");
+eq("normLang keeps a script subtag", normLang("zh_hant_tw"), "zh-Hant-TW");
+eq("normLang: script only", normLang("zh-Hans"), "zh-Hans");
+eq("normLang: numeric region", normLang("es-419"), "es-419");
+eq("normLang: unknown language passes through bare", normLang("th"), "th");
+eq("normLang: three-letter language", normLang("fil_PH"), "fil-PH");
+eq("normLang: tl is listed by engines as fil", normLang("tl"), "fil-PH");
+eq("normLang: legacy iw is he", normLang("iw-IL"), "he-IL");
+eq("normLang drops variants and extensions", normLang("en-US-x-private"), "en-US");
+eq("normLang rejects junk", normLang("japanese"), "");
+eq("normLang rejects auto", normLang("auto"), "");
+eq("normLang rejects empty", normLang(""), "");
+eq("normLang rejects null", normLang(null), "");
+eq("normLang rejects undefined", normLang(undefined), "");
+
+// ---------------- languages: template declaration ----------------
+eq("templateLangs: object form", templateLangs({ front: "ja", back: "en_US" }), { front: "ja-JP", back: "en-US", stt: "" });
+eq("templateLangs: string form covers both sides", templateLangs("de"), { front: "de-DE", back: "de-DE", stt: "" });
+eq("templateLangs: recognition override", templateLangs({ stt: "pt_BR" }), { front: "", back: "", stt: "pt-BR" });
+eq("templateLangs: nothing declared", templateLangs(undefined), { front: "", back: "", stt: "" });
+eq("templateLangs: a typo is ignored, not passed on", templateLangs({ front: "japanese", back: "en-US" }), { front: "", back: "en-US", stt: "" });
+
+// ---------------- languages: precedence ----------------
+(() => {
+  const tpl = templateLangs({ front: "ja-JP", back: "en-US" });
+  eq("template beats global (front)", sideLang(tpl, "front", "fr-FR"), { lang: "ja-JP", src: "template" });
+  eq("template beats global (back)", sideLang(tpl, "back", "fr-FR"), { lang: "en-US", src: "template" });
+  eq("global is the fallback", sideLang(templateLangs(null), "front", "fr-FR"), { lang: "fr-FR", src: "global" });
+  eq("a side the template leaves out falls back to global, not to the other side",
+     sideLang(templateLangs({ front: "ja-JP" }), "back", "fr-FR"), { lang: "fr-FR", src: "global" });
+  eq("a broken global falls back to en-US", sideLang(templateLangs(null), "front", "???"), { lang: "en-US", src: "global" });
+
+  const front = sideLang(tpl, "front", "fr-FR");
+  // attribute > template
+  const card = EL("div", [EL("div", [T("neko "), EL("span", [T("\u732B")], { lang: "zh" }), T(" desu")])]);
+  eq("a lang attribute beats the template for its chunk only",
+     speechSegments(extractLangLines(card), front),
+     [{ lang: "ja-JP", src: "template", text: "neko" },
+      { lang: "zh-CN", src: "attribute", text: "\u732B" },
+      { lang: "ja-JP", src: "template", text: "desu." }]);
+  // attribute > global
+  eq("a lang attribute beats the global setting",
+     speechSegments(extractLangLines(EL("div", [EL("p", [T("hola")], { lang: "es" })])), sideLang(templateLangs(null), "front", "en-US")),
+     [{ lang: "es-ES", src: "attribute", text: "hola." }]);
+  eq("an unusable lang attribute is ignored",
+     speechSegments(extractLangLines(EL("div", [EL("p", [T("hello")], { lang: "klingon" })])), front),
+     [{ lang: "ja-JP", src: "template", text: "hello." }]);
+})();
+
+// ---------------- languages: chunk splitting by lang ----------------
+(() => {
+  const def = { lang: "en-US", src: "global" };
+  const lines = (root) => extractLangLines(root);
+  eq("no lang attributes: one run per line",
+     lines(EL("div", [EL("div", [T("one")]), EL("div", [T("two")])])),
+     [{ text: "one", runs: [{ t: "one", lang: "" }] }, { text: "two", runs: [{ t: "two", lang: "" }] }]);
+  eq("no lang attributes: the whole side is ONE utterance, as before",
+     speechSegments(lines(EL("div", [EL("div", [T("one")]), EL("div", [T("two")])])), def),
+     [{ lang: "en-US", src: "global", text: "one. two." }]);
+  eq("lang is inherited by nested elements",
+     lines(EL("div", [EL("div", [EL("b", [T("ichi")]), T(" ni")], { lang: "ja" })])),
+     [{ text: "ichi ni", runs: [{ t: "ichi ni", lang: "ja" }] }]);
+  eq("an inner lang overrides an outer one",
+     lines(EL("div", [EL("div", [T("a "), EL("i", [T("b")], { lang: "de" }), T(" c")], { lang: "ja" })]))[0].runs,
+     [{ t: "a", lang: "ja" }, { t: "b", lang: "de" }, { t: "c", lang: "ja" }]);
+  eq("lang=\"\" switches back to the side's language",
+     lines(EL("div", [EL("div", [T("a "), EL("i", [T("b")], { lang: "" })], { lang: "ja" })]))[0].runs,
+     [{ t: "a", lang: "ja" }, { t: "b", lang: "" }]);
+  eq("same-language neighbours join without gaining a space",
+     lines(EL("div", [EL("b", [T("foo")]), T("bar")]))[0].runs, [{ t: "foobar", lang: "" }]);
+  eq("line text is what extractLines reports",
+     extractLines(EL("div", [T("neko "), EL("span", [T("cat")], { lang: "en" }), EL("br"), T("inu")])), ["neko cat", "inu"]);
+  eq("neighbouring lines in the same language merge across the line break",
+     speechSegments(lines(EL("div", [
+       EL("div", [T("neko")], { lang: "ja" }), EL("div", [T("inu")], { lang: "ja" }), EL("div", [T("cat")]),
+     ])), def),
+     [{ lang: "ja-JP", src: "attribute", text: "neko. inu." }, { lang: "en-US", src: "global", text: "cat." }]);
+  eq("each line still ends with a pause, mid-line chunks do not",
+     speechSegments(lines(EL("div", [T("say "), EL("span", [T("neko")], { lang: "ja" })])), def),
+     [{ lang: "en-US", src: "global", text: "say" }, { lang: "ja-JP", src: "attribute", text: "neko." }]);
+  eq("<small> and av-* stay unspoken", extractLines(EL("div", [T("a"), EL("small", [T("hint")]), EL("div", [T("ui")], { id: "av-root" })])), ["a"]);
+  eq("AnkiDroid's replay button is not read out",
+     extractLines(EL("div", [T("word"), EL("a", [EL("span", [T("Replay")])], { class: "replay-button soundLink" })])), ["word"]);
+  eq("subtractLines works on lang lines",
+     subtractLines(lines(EL("div", [EL("div", [T("Q")]), EL("div", [T("A")])])), ["Q"]).map((l) => l.text), ["A"]);
+})();
+
+// ---------------- command language ----------------
+eq("the phone's language is used when there is a pack", resolveCmdLang("auto", "pt-BR"), { lang: "pt-BR", src: "system" });
+eq("the phone's region is kept", resolveCmdLang("auto", "pt-PT"), { lang: "pt-PT", src: "system" });
+eq("no pack for the phone's language: English", resolveCmdLang("auto", "th-TH"), { lang: "en-US", src: "fallback" });
+eq("an explicit setting beats the phone", resolveCmdLang("de-DE", "pt-BR"), { lang: "de-DE", src: "global" });
+eq("a setting with no pack falls back to the phone", resolveCmdLang("ja-JP", "fr-FR"), { lang: "fr-FR", src: "system" });
+eq("English phone: unchanged", resolveCmdLang("auto", "en-GB"), { lang: "en-GB", src: "system" });
+(() => {
+  const en = AV_L10N.en.s;
+  for (const code of Object.keys(AV_L10N)) {
+    if (code === "en") continue;
+    const pk = AV_L10N[code];
+    eq(code + " pack translates every spoken string", Object.keys(pk.s).sort(), Object.keys(en).sort());
+    for (const k of Object.keys(en)) {
+      const ph = (str) => (str.match(/\{\w+\}/g) || []).sort();
+      eq(code + "." + k + " keeps its placeholders", ph(pk.s[k]), ph(en[k]));
+    }
+    eq(code + " pack has all thirteen command lists", Object.keys(pk.words).sort(),
+       ["again", "answer", "easy", "good", "hard", "help", "no", "off", "pause", "repeat", "skip", "stop", "yes"]);
+    // one word must never mean two grades, or two commands on the same side
+    const grades = ["again", "hard", "good", "easy"], cmds = ["stop", "off", "help", "pause", "repeat", "skip"];
+    const seen = {};
+    for (const g of grades.concat(cmds)) for (const w of pk.words[g].split(",")) {
+      const n = normalize(w);
+      ok(code + ": \"" + n + "\" belongs to one command only (" + g + " vs " + seen[n] + ")", !seen[n]);
+      seen[n] = g;
+    }
+    // the help text must name a word that actually triggers the command
+    CFG = { words_help: pk.words.help, words_answer: pk.words.answer };
+    ok(code + " greeting names a working help word", said(pk.s.greeting, "help"));
+    ok(code + " help names a working answer word", said(pk.s.helpIntro, "answer"));
+    for (const u of ["second", "minute", "hour", "day", "week", "month", "year"]) {
+      ok(code + " has singular+plural for " + u, pk.units[u] && pk.units[u].length === 2);
+    }
+  }
+  CFG = {};
+})();
+eq("expandIvl localized plural", expandIvl("4d", AV_L10N.pt), "4 dias");
+eq("expandIvl localized singular", expandIvl("1mo", AV_L10N.pt), "1 m\u00EAs");
+eq("expandIvl localized less-than", expandIvl("<10m", AV_L10N.de), "weniger als 10 Minuten");
+eq("expandIvl without a pack is English", expandIvl("4d"), "4 days");
 
 // ---------------- version consistency ----------------
 (() => {

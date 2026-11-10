@@ -2,7 +2,60 @@
 
 Versions are tracked in the header of `_ankivoice.js` and mirrored here.
 
-Current: **v38**
+Current: **v39**
+
+## v39
+
+**Each side of a card can be read in its own language**, and so can any chunk
+inside a side. Until now there was one global *Speech language*, so a
+Japanese-to-English deck had its Japanese read by an English voice (or the
+reverse). The language of a chunk of text is now decided in this order:
+
+1. **A `lang` attribute** on an element inside the card - plain HTML, e.g.
+   `<span lang="ja">...</span>`. That chunk is read in that language, wherever
+   it appears, so mixed sides work.
+2. **The template's declaration** for the side, a line next to the loader:
+   `<script>window.ANKIVOICE_LANG = { front: "ja-JP", back: "en-US" };</script>`
+3. **The global *Speech language* setting**, as before.
+
+Nothing changes for a note type that declares nothing.
+
+- On the answer side, the answer is read in the `back` language. If the back
+  adds nothing new and the question is read again, that uses `front`.
+- Language codes are normalized: `ja`, `ja_JP` and `JA-jp` all become `ja-JP`.
+  A bare language gets its usual region (`en` is `en-US`, `de` is `de-DE`,
+  `pt` is `pt-BR`), and a typo is ignored rather than handed to the TTS engine.
+- The language is now set **before every utterance** rather than once per card.
+- **Settings panel:** a new box at the top lists the language of each side, the
+  recognition language, and every chunk read on the current side with its
+  language and where that came from (*lang attribute* / *template* / *global
+  setting*). If the phone's TTS engine has no voice for a language, it says so.
+- AnkiDroid's audio replay buttons (from `[sound:]` and `{{tts}}`) are no longer
+  read aloud as "Replay".
+- The test deck has a new card, Japanese front and English back, for trying
+  this on the phone.
+
+**Commands and prompts follow the phone's language.** What AnkiVoice says for
+itself ("Mark it", "Card buried", the help text) and the words it listens for
+are no longer tied to the cards' language or to English. There is a new
+*Command language* setting, which defaults to **auto**: the phone's language
+when AnkiVoice has a pack for it, otherwise English. Packs: English, Portuguese,
+Spanish, French, German, Italian. *Recognition language* now also defaults to
+**auto**, meaning "same as the command language". So on a phone set to
+Portuguese, a deck with a Thai front and an English back is read in Thai and
+English and commanded in Portuguese ("resposta", "bom", "difícil" ...).
+
+- **English phones see no change.**
+- **A phone set to one of the other five languages changes behaviour on
+  update:** prompts, command words and recognition switch to that language. To
+  keep English, set ⚙ → *Command language* → `en-US`.
+- The command words are still editable chips. A list you have edited is kept as
+  it is; a list you never touched follows the command language.
+- Only what is *spoken* is translated. The on-screen bar and the settings panel
+  are still in English.
+- Not verified on a device: the translated command words are the dictionary
+  forms, and each recognizer has its own mis-hearings. Use *Voice test* and the
+  "heard recently" chips to add what yours actually produces.
 
 ## v38
 

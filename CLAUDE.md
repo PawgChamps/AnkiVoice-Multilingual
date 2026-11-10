@@ -46,9 +46,17 @@ One IIFE in `_ankivoice.js`, roughly in this order:
   the cookie (survives the random server port; see DECISIONS).
 - **Keep-awake**: `keepAwake()/letSleep()` — screen wake lock + a muted 1px
   looping video (belt and suspenders), held only while actively reviewing.
-- **Text extraction**: `textWithBreaks` → `extractLines` → `speechJoin`
-  (line breaks become spoken pauses; `<small>` and `av-*` excluded);
-  `subtractLines` (answer = card lines minus question lines); `hrLines` fallback.
+- **Language tables** (above `CFG`, because loading settings needs them):
+  `AV_LANGS`, `AV_LANG_ALIAS`, `AV_L10N` (every spoken string and the command
+  words, per language), `resolveCmdLang` / `applyCmdLang` / `T(key, vars)`.
+- **Text extraction**: `textPieces` → `extractLangLines` (lines made of
+  language runs; `<small>`, `av-*` and AnkiDroid's replay buttons excluded) →
+  `extractLines` (just the text). `subtractLines` (answer = card lines minus
+  question lines); `hrLines` fallback.
+- **Languages**: `normLang`, `templateLangs` (reads `window.ANKIVOICE_LANG`),
+  `sideLang`, `speechSegments` (lines → `[{ lang, src, text }]`, one per
+  utterance; uses `speechJoin` for the end-of-line pause). `setTtsLang` switches
+  the native TTS, per utterance. `lastRead` / `langReport` feed the panel.
 - **Normalization**: `normalize` (lowercase, NFKD, drop combining marks, strip
   punctuation via `AV_PUNCT`) — accent-folding but script-preserving. Everything
   that compares heard speech to text goes through it.
@@ -66,7 +74,9 @@ One IIFE in `_ankivoice.js`, roughly in this order:
   per-flow `listening` flag to guarantee one recognizer at a time, `speak`,
   `grade`, `countdown`, `listen`, `pauseMic`, and the `window.ankiSttResult`
   handler. Two counters decide when to park the mic: `tries` (silence) and
-  `noMatch` (heard something, recognised nothing). **`resume === true` skips the
+  `noMatch` (heard something, recognised nothing). The side's utterances are
+  `mainSegs`; `speak(text, lang)` defaults to the command language, which is
+  what every prompt uses. **`resume === true` skips the
   reading phase** and opens the mic immediately — used when un-pausing by tap and
   when closing the settings panel.
 - **`stopFlow`, `onTap`** — toggle/stop logic.
@@ -103,6 +113,9 @@ answer → say "Mark it" → short delay → listen → a grade word calls
 - **Fixed filename `_ankivoice.js`.** Never rename — templates reference it.
 - **Version** lives in the header comment (`VERSION:`) and `CHANGELOG.md`. Bump
   both on any change.
+- **Never hard-code a spoken string.** Add it to `AV_L10N.en.s` and every other
+  pack (a test fails if a pack misses a key or a placeholder) and say it with
+  `T("key")`. On-screen text is English only.
 - **All injected DOM uses `av-*` ids** so `textWithBreaks` excludes it from
   speech. If you add UI, use an `av-` id.
 - Unicode in strings is written as `\uXXXX` escapes (or literal) — be careful
@@ -154,7 +167,8 @@ answer → say "Mark it" → short delay → listen → a grade word calls
   now open in the settings text fields? does `ankiSttSetLanguage` exist on this
   JS API version? does "detect spoken answers" behave now that hypotheses are
   matched separately?
-- Per-side TTS language for language decks (`ankiTtsSetLanguage`).
+- Verify on-device (v39): the per-utterance language switch, the status code
+  from `ankiTtsSetLanguage`, and the translated command words.
 - Upstream AnkiDroid patch to reduce beeps (silence-length extras + recognizer
   `destroy()`), and a bigger one to enable `getUserMedia`
   (`MODIFY_AUDIO_SETTINGS` + `AudioManager` mode). Details in DECISIONS.

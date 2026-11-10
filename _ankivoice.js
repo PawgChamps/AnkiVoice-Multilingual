@@ -3,11 +3,26 @@
    FILE: _ankivoice.js  -- filename is STABLE; never rename it. To update, replace
    THIS FILE'S CONTENTS in collection.media (desktop) and sync. Versions below.
 
-   VERSION: 38
+   VERSION: 39
 
    SETTINGS: see the CFG block below.
 
    CHANGELOG:
+     v39 - per-side and per-chunk speech languages, for language decks. A
+           template can declare window.ANKIVOICE_LANG = { front: "ja-JP",
+           back: "en-US" } and each side is read in its own language; an
+           element with a lang attribute (<span lang="ja">) is read in that
+           language wherever it appears. The global "Speech language" is
+           still the fallback, and is what AnkiVoice's own prompts use. The
+           language is now set before every utterance instead of once per
+           card. The settings panel shows which language each chunk of the
+           current side was read in and where it came from. AnkiDroid's
+           audio replay buttons are no longer read aloud as "Replay".
+           Also new: a "Command language". AnkiVoice's own prompts and
+           command words now follow the phone's language when there is a
+           pack for it (Portuguese, Spanish, French, German, Italian), and
+           recognition follows along, so the commands stay in your language
+           whatever the cards are in. English phones see no change.
      v38 - spelling differences no longer make a right answer wrong: doubled
            letters (Elliott/Elliot) and British/American spellings
            (colour/color, theatre/theater) now match. One letter swapped for
@@ -144,7 +159,290 @@
   // Must match the VERSION in the header comment above; a test asserts they agree.
   // The point is to be able to tell, on the phone, which script is actually
   // running - media-name collisions make that genuinely ambiguous otherwise.
-  var AV_VERSION = 38;
+  var AV_VERSION = 39;
+
+  // ---------------- languages (data) ----------------
+  // These sit above the settings because loading the settings needs them: the
+  // default command words depend on the command language.
+  // Common BCP-47 tags. Offered as chips in the settings panel, and the source
+  // of the default region when a template only names a language ("ja").
+  var AV_LANGS = [
+    "en-US", "en-GB", "fr-FR", "de-DE", "es-ES", "it-IT", "pt-BR", "nl-NL",
+    "pl-PL", "ru-RU", "sv-SE", "tr-TR", "ja-JP", "ko-KR", "zh-CN", "ar-SA",
+    "hi-IN", "he-IL", "cs-CZ", "el-GR", "id-ID", "vi-VN", "fil-PH"
+  ];
+  // Codes people write that Android TTS engines list under another name.
+  var AV_LANG_ALIAS = { tl: "fil", iw: "he", "in": "id" };
+  // What AnkiVoice itself says and listens for, per language. "en" is the
+  // reference and the fallback for any missing string; its command words are
+  // the CFG.words_* defaults below. A pack must be a language whose recognizer
+  // output separates words with spaces, because said() matches whole words -
+  // which is why there is no Japanese or Chinese pack. units are the forms
+  // used after "next review in" (so German is dative: "in 4 Tagen").
+  var AV_L10N = {
+    en: {
+      words: null,
+      s: {
+        greeting: "AnkiVoice is on. Say help, to list the voice commands available.",
+        gradeHelp: "Mark it: again, hard, good, or easy.",
+        helpIntro: "Voice commands. Say answer, to reveal the answer.",
+        helpDetect: " Or just say the answer itself, and if it's right I'll mark it good.",
+        helpRest: " Say skip, to bury the card and come back to it later. Say pause, to pause the microphone for {n} seconds while you think. Say off, to turn the voice off until you tap the bar. Say help, to hear these commands again.",
+        markIt: "Mark it.",
+        marked: "Marked {g}",
+        nextIn: ", next review in {t}",
+        g1: "again",
+        g2: "hard",
+        g3: "good",
+        g4: "easy",
+        buried: "Card buried.",
+        off: "Voice off.",
+        correct: "Correct.",
+        notRecognized: "Answer not recognized.",
+        remember: "Should I remember, {x}, as a right answer for this card?",
+        saved: "Saved.",
+        notSaved: "Sorry, I could not save that.",
+        noise: "I keep hearing words I don't know.",
+        gradeNotHeard: "Grade not heard.",
+        answerNotHeard: "Answer command not heard.",
+        micPaused: " Microphone paused. Tap the button to listen again.",
+        noMicPerm: "Microphone permission is missing.",
+        nothing: "There's nothing for me to read on this card."
+      }
+    },
+    pt: {
+      lessThan: "menos de ",
+      units: {"second": ["segundo", "segundos"], "minute": ["minuto", "minutos"], "hour": ["hora", "horas"], "day": ["dia", "dias"], "week": ["semana", "semanas"], "month": ["m\u00eas", "meses"], "year": ["ano", "anos"]},
+      words: {
+        answer: "resposta, responder, mostrar, revelar, virar",
+        again: "de novo, novamente, errei, errado, errada, esqueci, falhei, n\u00e3o",
+        hard: "dif\u00edcil, duro",
+        good: "bom, boa, certo, certa, correto, correta, acertei, sim, ok",
+        easy: "f\u00e1cil, simples",
+        skip: "pular, saltar, enterrar, passar",
+        pause: "pausa, pausar",
+        help: "ajuda",
+        off: "desligar, desliga",
+        stop: "parar, pare, sair, cancelar",
+        repeat: "repetir, repete, repita",
+        yes: "sim, claro, salvar, guardar, lembrar",
+        no: "n\u00e3o, nunca"
+      },
+      s: {
+        greeting: "O AnkiVoice est\u00e1 ligado. Diga ajuda, para ouvir os comandos de voz.",
+        gradeHelp: "Avalie: de novo, dif\u00edcil, bom, ou f\u00e1cil.",
+        helpIntro: "Comandos de voz. Diga resposta, para revelar a resposta.",
+        helpDetect: " Ou diga a pr\u00f3pria resposta e, se estiver certa, eu marco como bom.",
+        helpRest: " Diga pular, para enterrar o cart\u00e3o e voltar a ele mais tarde. Diga pausa, para pausar o microfone por {n} segundos enquanto pensa. Diga desligar, para desligar a voz at\u00e9 tocar na barra. Diga ajuda, para ouvir estes comandos de novo.",
+        markIt: "Avalie.",
+        marked: "Marcado como {g}",
+        nextIn: ", pr\u00f3xima revis\u00e3o em {t}",
+        g1: "de novo",
+        g2: "dif\u00edcil",
+        g3: "bom",
+        g4: "f\u00e1cil",
+        buried: "Cart\u00e3o enterrado.",
+        off: "Voz desligada.",
+        correct: "Correto.",
+        notRecognized: "Resposta n\u00e3o reconhecida.",
+        remember: "Devo lembrar, {x}, como resposta certa para este cart\u00e3o?",
+        saved: "Salvo.",
+        notSaved: "Desculpe, n\u00e3o consegui salvar.",
+        noise: "Continuo ouvindo palavras que n\u00e3o conhe\u00e7o.",
+        gradeNotHeard: "N\u00e3o ouvi a avalia\u00e7\u00e3o.",
+        answerNotHeard: "N\u00e3o ouvi o comando de resposta.",
+        micPaused: " Microfone pausado. Toque no bot\u00e3o para ouvir de novo.",
+        noMicPerm: "Falta a permiss\u00e3o do microfone.",
+        nothing: "N\u00e3o h\u00e1 nada para eu ler neste cart\u00e3o."
+      }
+    },
+    es: {
+      lessThan: "menos de ",
+      units: {"second": ["segundo", "segundos"], "minute": ["minuto", "minutos"], "hour": ["hora", "horas"], "day": ["d\u00eda", "d\u00edas"], "week": ["semana", "semanas"], "month": ["mes", "meses"], "year": ["a\u00f1o", "a\u00f1os"]},
+      words: {
+        answer: "respuesta, responder, mostrar, revelar, voltear",
+        again: "otra vez, de nuevo, mal, incorrecto, incorrecta, olvid\u00e9, fall\u00e9, no",
+        hard: "dif\u00edcil, duro",
+        good: "bien, bueno, correcto, correcta, acert\u00e9, s\u00ed, vale, ok",
+        easy: "f\u00e1cil, sencillo",
+        skip: "saltar, omitir, enterrar, pasar",
+        pause: "pausa, pausar",
+        help: "ayuda",
+        off: "apagar, apaga",
+        stop: "parar, salir, cancelar, detener, alto",
+        repeat: "repetir, repite, repita",
+        yes: "s\u00ed, claro, guardar, recordar, vale",
+        no: "no, nunca"
+      },
+      s: {
+        greeting: "AnkiVoice est\u00e1 activado. Di ayuda, para escuchar los comandos de voz.",
+        gradeHelp: "Califica: otra vez, dif\u00edcil, bien, o f\u00e1cil.",
+        helpIntro: "Comandos de voz. Di respuesta, para mostrar la respuesta.",
+        helpDetect: " O di la respuesta directamente y, si es correcta, la marco como bien.",
+        helpRest: " Di saltar, para enterrar la tarjeta y volver a ella m\u00e1s tarde. Di pausa, para pausar el micr\u00f3fono durante {n} segundos mientras piensas. Di apagar, para apagar la voz hasta que toques la barra. Di ayuda, para escuchar estos comandos otra vez.",
+        markIt: "Califica.",
+        marked: "Marcada como {g}",
+        nextIn: ", pr\u00f3ximo repaso en {t}",
+        g1: "otra vez",
+        g2: "dif\u00edcil",
+        g3: "bien",
+        g4: "f\u00e1cil",
+        buried: "Tarjeta enterrada.",
+        off: "Voz apagada.",
+        correct: "Correcto.",
+        notRecognized: "Respuesta no reconocida.",
+        remember: "\u00bfDebo recordar, {x}, como respuesta correcta para esta tarjeta?",
+        saved: "Guardado.",
+        notSaved: "Lo siento, no pude guardarlo.",
+        noise: "Sigo oyendo palabras que no conozco.",
+        gradeNotHeard: "No o\u00ed la calificaci\u00f3n.",
+        answerNotHeard: "No o\u00ed el comando de respuesta.",
+        micPaused: " Micr\u00f3fono en pausa. Toca el bot\u00f3n para volver a escuchar.",
+        noMicPerm: "Falta el permiso del micr\u00f3fono.",
+        nothing: "No hay nada que pueda leer en esta tarjeta."
+      }
+    },
+    fr: {
+      lessThan: "moins de ",
+      units: {"second": ["seconde", "secondes"], "minute": ["minute", "minutes"], "hour": ["heure", "heures"], "day": ["jour", "jours"], "week": ["semaine", "semaines"], "month": ["mois", "mois"], "year": ["an", "ans"]},
+      words: {
+        answer: "r\u00e9ponse, r\u00e9pondre, montrer, r\u00e9v\u00e9ler, retourner",
+        again: "encore, \u00e0 revoir, faux, incorrect, oubli\u00e9, rat\u00e9, non",
+        hard: "difficile, dur",
+        good: "bien, bon, correct, juste, oui, d'accord, ok",
+        easy: "facile, simple",
+        skip: "passer, sauter, enterrer",
+        pause: "pause",
+        help: "aide",
+        off: "\u00e9teindre, \u00e9teins, d\u00e9sactiver",
+        stop: "stop, arr\u00eater, arr\u00eate, quitter, annuler",
+        repeat: "r\u00e9p\u00e9ter, r\u00e9p\u00e8te",
+        yes: "oui, ouais, d'accord, enregistrer, retenir",
+        no: "non, jamais"
+      },
+      s: {
+        greeting: "AnkiVoice est activ\u00e9. Dites aide, pour entendre les commandes vocales.",
+        gradeHelp: "Notez : encore, difficile, bien, ou facile.",
+        helpIntro: "Commandes vocales. Dites r\u00e9ponse, pour afficher la r\u00e9ponse.",
+        helpDetect: " Ou dites directement la r\u00e9ponse et, si elle est juste, je la note bien.",
+        helpRest: " Dites passer, pour enterrer la carte et y revenir plus tard. Dites pause, pour couper le micro pendant {n} secondes le temps de r\u00e9fl\u00e9chir. Dites \u00e9teindre, pour couper la voix jusqu'\u00e0 ce que vous touchiez la barre. Dites aide, pour r\u00e9entendre ces commandes.",
+        markIt: "Notez.",
+        marked: "Not\u00e9e {g}",
+        nextIn: ", prochaine r\u00e9vision dans {t}",
+        g1: "encore",
+        g2: "difficile",
+        g3: "bien",
+        g4: "facile",
+        buried: "Carte enterr\u00e9e.",
+        off: "Voix d\u00e9sactiv\u00e9e.",
+        correct: "Correct.",
+        notRecognized: "R\u00e9ponse non reconnue.",
+        remember: "Dois-je retenir, {x}, comme bonne r\u00e9ponse pour cette carte ?",
+        saved: "Enregistr\u00e9.",
+        notSaved: "D\u00e9sol\u00e9, je n'ai pas pu l'enregistrer.",
+        noise: "J'entends sans cesse des mots que je ne connais pas.",
+        gradeNotHeard: "Note non entendue.",
+        answerNotHeard: "Commande de r\u00e9ponse non entendue.",
+        micPaused: " Micro en pause. Touchez le bouton pour r\u00e9\u00e9couter.",
+        noMicPerm: "L'autorisation du micro est manquante.",
+        nothing: "Il n'y a rien \u00e0 lire sur cette carte."
+      }
+    },
+    de: {
+      lessThan: "weniger als ",
+      units: {"second": ["Sekunde", "Sekunden"], "minute": ["Minute", "Minuten"], "hour": ["Stunde", "Stunden"], "day": ["Tag", "Tagen"], "week": ["Woche", "Wochen"], "month": ["Monat", "Monaten"], "year": ["Jahr", "Jahren"]},
+      words: {
+        answer: "antwort, antworten, zeigen, aufdecken, umdrehen",
+        again: "nochmal, noch mal, wieder, falsch, vergessen, nein",
+        hard: "schwer, schwierig",
+        good: "gut, richtig, korrekt, ja, okay, ok",
+        easy: "einfach, leicht",
+        skip: "\u00fcberspringen, weiter, begraben",
+        pause: "pause, pausieren",
+        help: "hilfe",
+        off: "ausschalten, abschalten",
+        stop: "stopp, stop, beenden, abbrechen, halt",
+        repeat: "wiederholen, wiederhole, wiederholung",
+        yes: "ja, klar, speichern, merken",
+        no: "nein, nicht, nie"
+      },
+      s: {
+        greeting: "AnkiVoice ist an. Sag Hilfe, um die Sprachbefehle zu h\u00f6ren.",
+        gradeHelp: "Bewerte: nochmal, schwer, gut, oder einfach.",
+        helpIntro: "Sprachbefehle. Sag Antwort, um die Antwort zu zeigen.",
+        helpDetect: " Oder sag einfach die Antwort selbst, und wenn sie stimmt, bewerte ich sie mit gut.",
+        helpRest: " Sag \u00fcberspringen, um die Karte zu begraben und sp\u00e4ter darauf zur\u00fcckzukommen. Sag Pause, um das Mikrofon f\u00fcr {n} Sekunden anzuhalten, w\u00e4hrend du nachdenkst. Sag ausschalten, um die Stimme auszuschalten, bis du auf die Leiste tippst. Sag Hilfe, um diese Befehle noch einmal zu h\u00f6ren.",
+        markIt: "Bewerte.",
+        marked: "Bewertet mit {g}",
+        nextIn: ", n\u00e4chste Wiederholung in {t}",
+        g1: "nochmal",
+        g2: "schwer",
+        g3: "gut",
+        g4: "einfach",
+        buried: "Karte begraben.",
+        off: "Stimme aus.",
+        correct: "Richtig.",
+        notRecognized: "Antwort nicht erkannt.",
+        remember: "Soll ich mir, {x}, als richtige Antwort f\u00fcr diese Karte merken?",
+        saved: "Gespeichert.",
+        notSaved: "Das konnte ich leider nicht speichern.",
+        noise: "Ich h\u00f6re immer wieder W\u00f6rter, die ich nicht kenne.",
+        gradeNotHeard: "Bewertung nicht geh\u00f6rt.",
+        answerNotHeard: "Antwortbefehl nicht geh\u00f6rt.",
+        micPaused: " Mikrofon pausiert. Tippe auf die Leiste, um wieder zuzuh\u00f6ren.",
+        noMicPerm: "Die Mikrofonberechtigung fehlt.",
+        nothing: "Auf dieser Karte gibt es nichts zum Vorlesen."
+      }
+    },
+    it: {
+      lessThan: "meno di ",
+      units: {"second": ["secondo", "secondi"], "minute": ["minuto", "minuti"], "hour": ["ora", "ore"], "day": ["giorno", "giorni"], "week": ["settimana", "settimane"], "month": ["mese", "mesi"], "year": ["anno", "anni"]},
+      words: {
+        answer: "risposta, rispondere, mostra, mostrare, rivela, gira",
+        again: "di nuovo, ancora, sbagliato, sbagliata, errato, dimenticato, no",
+        hard: "difficile, duro",
+        good: "bene, buono, corretto, giusto, esatto, s\u00ec, ok, va bene",
+        easy: "facile, semplice",
+        skip: "salta, saltare, seppellisci, passa",
+        pause: "pausa",
+        help: "aiuto",
+        off: "spegni, spegnere, disattiva",
+        stop: "stop, ferma, fermati, esci, annulla, basta",
+        repeat: "ripeti, ripetere",
+        yes: "s\u00ec, certo, salva, ricorda",
+        no: "no, mai"
+      },
+      s: {
+        greeting: "AnkiVoice \u00e8 attivo. Di' aiuto, per ascoltare i comandi vocali.",
+        gradeHelp: "Valuta: di nuovo, difficile, bene, o facile.",
+        helpIntro: "Comandi vocali. Di' risposta, per mostrare la risposta.",
+        helpDetect: " Oppure di' direttamente la risposta e, se \u00e8 giusta, la segno come bene.",
+        helpRest: " Di' salta, per seppellire la carta e tornarci pi\u00f9 tardi. Di' pausa, per mettere in pausa il microfono per {n} secondi mentre pensi. Di' spegni, per spegnere la voce finch\u00e9 non tocchi la barra. Di' aiuto, per riascoltare questi comandi.",
+        markIt: "Valuta.",
+        marked: "Segnata come {g}",
+        nextIn: ", prossima ripetizione tra {t}",
+        g1: "di nuovo",
+        g2: "difficile",
+        g3: "bene",
+        g4: "facile",
+        buried: "Carta sepolta.",
+        off: "Voce spenta.",
+        correct: "Corretto.",
+        notRecognized: "Risposta non riconosciuta.",
+        remember: "Devo ricordare, {x}, come risposta giusta per questa carta?",
+        saved: "Salvato.",
+        notSaved: "Mi dispiace, non sono riuscito a salvarlo.",
+        noise: "Continuo a sentire parole che non conosco.",
+        gradeNotHeard: "Valutazione non sentita.",
+        answerNotHeard: "Comando di risposta non sentito.",
+        micPaused: " Microfono in pausa. Tocca il pulsante per ascoltare di nuovo.",
+        noMicPerm: "Manca il permesso del microfono.",
+        nothing: "Non c'\u00e8 niente da leggere su questa carta."
+      }
+    }
+  };
+  // Offered as chips for "Command language": one or two regions per pack.
+  var AV_CMD_LANGS = ["auto", "en-US", "en-GB", "pt-BR", "pt-PT", "es-ES", "es-MX", "fr-FR", "de-DE", "it-IT"];
 
   // ---------------- settings ----------------
   var CFG = {
@@ -165,8 +463,12 @@
     voiceTest: false,           // diagnostic: show what the recognizer heard, without acting on it
     maxNoMatchTries: 12,        // recognized-but-unmatched replies before auto-pausing (noise guard)
     announceInterval: true,     // speak the next review interval after grading
-    ttsLang: "en-US",           // spoken language, BCP-47 (ankiTtsSetLanguage)
-    sttLang: "en-US",           // recognition language, if this AnkiDroid build can set it
+    ttsLang: "en-US",           // spoken language, BCP-47 (ankiTtsSetLanguage). The fallback when
+                                //   neither a lang attribute nor window.ANKIVOICE_LANG says
+                                //   otherwise.
+    uiLang: "auto",             // language of AnkiVoice's own prompts and command words;
+                                //   "auto" = the phone's language when there is a pack for it
+    sttLang: "auto",            // recognition language; "auto" = same as uiLang
     ttsStartGraceMs: 900,       // how long to wait for TTS to report "speaking" (not in the panel)
     words_answer: "answer, answers, answered, anser, ansa, ansr, show, reveal, flip",
     words_again:  "again, agin, wrong, incorrect, forgot, missed, failed, fail, nope, no",
@@ -183,9 +485,44 @@
     words_no:     "no, nope, nah, negative, don t, do not, never"
   };
   var CFG_DEFAULTS = {}; for (var _dk in CFG) CFG_DEFAULTS[_dk] = CFG[_dk];
+  AV_L10N.en.words = {};
+  for (var _ek in CFG) if (_ek.indexOf("words_") === 0) AV_L10N.en.words[_ek.slice(6)] = CFG[_ek];
+  // The command language: what AnkiVoice speaks its prompts in and which words
+  // it listens for. An explicit setting wins; otherwise the phone's language,
+  // if there is a pack for it; otherwise English.
+  function resolveCmdLang(setting, sys) {
+    var want = normLang(setting);
+    if (want && AV_L10N[want.split("-")[0]]) return { lang: want, src: "global" };
+    var s = normLang(sys);
+    if (s && AV_L10N[s.split("-")[0]]) return { lang: s, src: "system" };
+    return { lang: "en-US", src: "fallback" };
+  }
+  var cmdLang = { lang: "en-US", src: "fallback" }, cmdPack = AV_L10N.en;
+  // Makes the command language's vocabulary the DEFAULT word lists. A list the
+  // user has edited is left alone; one still at its default follows the
+  // language. Doing it through the defaults keeps everything else working
+  // unchanged: the chips show the words that are live, Reset restores them,
+  // and only real edits are saved.
+  function applyCmdLang() {
+    var sys = "";
+    try { sys = navigator.language || ""; } catch (e) {}
+    cmdLang = resolveCmdLang(CFG.uiLang, sys);
+    cmdPack = AV_L10N[cmdLang.lang.split("-")[0]];
+    for (var k in AV_L10N.en.words) {
+      var key = "words_" + k, def = (cmdPack.words && cmdPack.words[k]) || AV_L10N.en.words[k];
+      if (CFG[key] === CFG_DEFAULTS[key]) CFG[key] = def;
+      CFG_DEFAULTS[key] = def;
+    }
+  }
+  function T(k, vars) {
+    var str = (cmdPack.s && cmdPack.s[k] != null) ? cmdPack.s[k] : AV_L10N.en.s[k];
+    if (vars) for (var v in vars) str = str.split("{" + v + "}").join(String(vars[v]));
+    return str;
+  }
+  applyCmdLang();
   // Defaults that have since changed: setting -> the value(s) it used to default
   // to. Only consulted for settings saved before v37 (see below).
-  var AV_OLD_DEFAULTS = { maxAnswerWords: [3] };
+  var AV_OLD_DEFAULTS = { maxAnswerWords: [3], sttLang: ["en-US"] };
   try {
     var _raw = null;
     try { var _cm = document.cookie.match(/(?:^|; )av_cfg=([^;]*)/); if (_cm) _raw = decodeURIComponent(_cm[1]); } catch (_ce) {}
@@ -198,6 +535,9 @@
     // default is taken to be that stale default rather than a choice, and is
     // dropped so the current default applies.
     var _legacy = !_sv || !_sv._cfgv;
+    // The command language decides the default word lists, so it has to be
+    // known before the saved lists are compared against them.
+    if (_sv && typeof _sv.uiLang === "string") { CFG.uiLang = _sv.uiLang; applyCmdLang(); }
     for (var _sk in _sv) {
       if (!CFG.hasOwnProperty(_sk)) continue;
       var _old = AV_OLD_DEFAULTS[_sk];
@@ -272,6 +612,23 @@
   // level rather than per-flow so the on-screen button and the voice question
   // agree, and a resumed flow (after the settings panel) still knows about it.
   var unmatched = "", kept = false;
+  // Language bookkeeping for this page. ttsNow is the language the native TTS
+  // was last switched to from here (it persists natively across cards, but this
+  // page cannot read it back, so the first utterance always sets it).
+  // langFail remembers languages the engine refused; lastRead is what the
+  // settings panel reports.
+  var ttsNow = null, langFail = {}, lastRead = null;
+  function promptLang() { return cmdLang.lang; }
+  async function setTtsLang(lang) {
+    if (!api || !lang || lang === ttsNow) return;
+    try {
+      var code = parseInt(unwrapValue(await api.ankiTtsSetLanguage(lang)), 10);
+      // Android answers LANG_MISSING_DATA (-1) or LANG_NOT_SUPPORTED (-2) and
+      // then keeps speaking in whatever language it had before.
+      if (code < 0) { langFail[lang] = code; ttsNow = null; }
+      else { delete langFail[lang]; ttsNow = lang; }
+    } catch (e) {}
+  }
 
   // ---------------- keep screen awake (only while active) ----------------
   var wakeLock = null, awake = false, keepVid = null;
@@ -324,30 +681,98 @@
     H1:1, H2:1, H3:1, H4:1, H5:1, H6:1, BLOCKQUOTE:1, PRE:1, HR:1,
     SECTION:1, ARTICLE:1, HEADER:1, FOOTER:1, DD:1, DT:1, FIGURE:1, FIGCAPTION:1
   };
-  function textWithBreaks(root) {
-    var out = "";
-    (function walk(node) {
+  // An element's own lang attribute, or null when it has none. Never throws:
+  // the tests feed this plain objects, and SVG nodes are not quite elements.
+  function langAttr(el) {
+    try {
+      if (el && typeof el.getAttribute === "function") {
+        var l = el.getAttribute("lang");
+        if (l != null) return String(l);
+      }
+    } catch (e) {}
+    return null;
+  }
+  // AnkiDroid renders [sound:...] and {{tts ...}} as a play button whose SVG
+  // carries the literal text "Replay", which would otherwise be read aloud.
+  function isReplayButton(el) {
+    try {
+      if (el && typeof el.getAttribute === "function") {
+        return /(^|\s)(replay-button|soundLink)(\s|$)/.test(el.getAttribute("class") || "");
+      }
+    } catch (e) {}
+    return false;
+  }
+  // The card's text as a flat list of pieces. A piece is either a line break
+  // ({ br: true }) or a stretch of text with the lang attribute in force where
+  // it sits ({ t: "...", lang: "ja" }; lang is "" when no element inside the
+  // card declares one). Only elements INSIDE root count, so a lang on <html> or
+  // <body> does not override the template's own configuration.
+  function textPieces(root) {
+    var out = [];
+    (function walk(node, lang) {
       for (var i = 0; i < node.childNodes.length; i++) {
         var c = node.childNodes[i];
-        if (c.nodeType === 3) { out += c.nodeValue.replace(/[ \t\r\n\f\u00A0]+/g, " "); continue; }
+        if (c.nodeType === 3) { out.push({ t: c.nodeValue.replace(/[ \t\r\n\f\u00A0]+/g, " "), lang: lang }); continue; }
         if (c.nodeType !== 1) continue;
         var tag = c.tagName;
         if (tag === "SMALL" || tag === "SCRIPT" || tag === "STYLE" || tag === "VIDEO" || (c.id && c.id.indexOf("av-") === 0)) continue;
-        if (tag === "BR") { out += "\n"; continue; }
+        if (isReplayButton(c)) continue;
+        if (tag === "BR") { out.push({ br: true }); continue; }
         var block = AV_BLOCK[tag];
-        if (block) out += "\n";
-        walk(c);
-        if (block) out += "\n";
+        var own = langAttr(c);
+        if (block) out.push({ br: true });
+        walk(c, own == null ? lang : own);
+        if (block) out.push({ br: true });
       }
-    })(root);
+    })(root, "");
+    return out;
+  }
+  function textWithBreaks(root) {
+    var p = textPieces(root), out = "";
+    for (var i = 0; i < p.length; i++) out += p[i].br ? "\n" : p[i].t;
+    return out;
+  }
+  function lineTidy(s) {
+    return s.replace(/[ \t\u00A0\u2000-\u200A\u205F\u3000]+/g, " ").trim();
+  }
+  // Lines, each with the language runs that make it up:
+  //   { text: "neko means cat", runs: [{ t: "neko", lang: "ja" }, { t: "means cat", lang: "" }] }
+  // text is exactly what extractLines() returns for that line, so the
+  // question/answer subtraction keeps comparing the same strings as before.
+  function extractLangLines(root) {
+    var p = textPieces(root), out = [], cur = [];
+    function flush() {
+      var text = "", runs = [], j;
+      for (j = 0; j < cur.length; j++) text += cur[j].t;
+      text = lineTidy(text);
+      if (text) {
+        for (j = 0; j < cur.length; j++) {
+          var t = lineTidy(cur[j].t);
+          if (t) runs.push({ t: t, lang: cur[j].lang });
+        }
+        out.push({ text: text, runs: runs });
+      }
+      cur = [];
+    }
+    for (var i = 0; i < p.length; i++) {
+      if (p[i].br) { flush(); continue; }
+      // Join neighbours in the same language BEFORE tidying, so "<b>foo</b>bar"
+      // stays one word instead of gaining a space.
+      var last = cur.length ? cur[cur.length - 1] : null;
+      if (last && last.lang === p[i].lang) last.t += p[i].t;
+      else cur.push({ t: p[i].t, lang: p[i].lang });
+    }
+    flush();
     return out;
   }
   function extractLines(root) {
-    var raw = textWithBreaks(root).split(/\r\n|\r|\n/), out = [];
-    for (var i = 0; i < raw.length; i++) {
-      var ln = raw[i].replace(/[ \t\u00A0\u2000-\u200A\u205F\u3000]+/g, " ").trim();
-      if (ln) out.push(ln);
-    }
+    var l = extractLangLines(root), out = [];
+    for (var i = 0; i < l.length; i++) out.push(l[i].text);
+    return out;
+  }
+  function textsOf(lines) {
+    var out = [];
+    for (var i = 0; i < lines.length; i++) out.push(lines[i].text);
     return out;
   }
   function speechJoin(lines) {
@@ -359,13 +784,14 @@
     }
     return out.join(" ");
   }
+  // all may be plain strings or the { text, runs } lines from extractLangLines.
   function subtractLines(all, front) {
     var pool = {};
     for (var i = 0; i < front.length; i++) { var k = front[i]; pool[k] = (pool[k] || 0) + 1; }
     var out = [];
     for (var j = 0; j < all.length; j++) {
-      var L = all[j];
-      if (pool[L] > 0) { pool[L]--; continue; }
+      var L = all[j], key = (typeof L === "string") ? L : L.text;
+      if (pool[key] > 0) { pool[key]--; continue; }
       out.push(L);
     }
     return out;
@@ -375,7 +801,81 @@
     if (!hr) return [];
     var tmp = document.createElement("div"), n = hr.nextSibling;
     while (n) { tmp.appendChild(n.cloneNode(true)); n = n.nextSibling; }
-    return extractLines(tmp);
+    // The clones lose their ancestors, so carry over the language of whatever
+    // wraps the <hr> (stopping at <body>, like textPieces does).
+    var p = hr.parentNode;
+    while (p && p.nodeType === 1 && p !== document.body) {
+      var l = langAttr(p);
+      if (l != null) { tmp.setAttribute("lang", l); break; }
+      p = p.parentNode;
+    }
+    var wrap = document.createElement("div");
+    wrap.appendChild(tmp);
+    return extractLangLines(wrap);
+  }
+
+  // ---------------- languages ----------------
+  // "ja", "ja_JP", "JA-jp" -> "ja-JP". Returns "" for anything that is not a
+  // language tag, so a typo falls through to the next source instead of being
+  // handed to the TTS engine. A bare language gets its usual region, because an
+  // engine asked for plain "de" or "en" picks a regional voice on its own and
+  // not always the expected one. Variants and extensions are dropped: Android
+  // TTS cannot use them.
+  function normLang(s) {
+    if (s == null) return "";
+    var parts = String(s).trim().replace(/_/g, "-").split("-");
+    var lang = parts[0].toLowerCase(), script = "", region = "", i;
+    if (!/^[a-z]{2,3}$/.test(lang)) return "";
+    if (AV_LANG_ALIAS[lang]) lang = AV_LANG_ALIAS[lang];
+    for (i = 1; i < parts.length; i++) {
+      var p = parts[i];
+      if (!script && !region && /^[A-Za-z]{4}$/.test(p)) script = p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();
+      else if (!region && /^([A-Za-z]{2}|[0-9]{3})$/.test(p)) region = p.toUpperCase();
+      else break;
+    }
+    if (!script && !region) {
+      for (i = 0; i < AV_LANGS.length; i++) {
+        if (AV_LANGS[i].indexOf(lang + "-") === 0) { region = AV_LANGS[i].slice(lang.length + 1); break; }
+      }
+    }
+    return lang + (script ? "-" + script : "") + (region ? "-" + region : "");
+  }
+  // The template's declaration, normalized. cfg is window.ANKIVOICE_LANG:
+  //   { front: "ja-JP", back: "en-US" }   each side in its own language
+  //   { front: "ja", back: "en", stt: "en-US" }   plus a recognition language
+  //   "ja-JP"                              both sides
+  function templateLangs(cfg) {
+    var out = { front: "", back: "", stt: "" };
+    if (typeof cfg === "string") { out.front = out.back = normLang(cfg); }
+    else if (cfg && typeof cfg === "object") {
+      out.front = normLang(cfg.front); out.back = normLang(cfg.back); out.stt = normLang(cfg.stt);
+    }
+    return out;
+  }
+  // The language a side is read in when no lang attribute says otherwise, and
+  // where that came from. side is "front" or "back".
+  function sideLang(tpl, side, globalLang) {
+    if (tpl[side]) return { lang: tpl[side], src: "template" };
+    return { lang: normLang(globalLang) || "en-US", src: "global" };
+  }
+  // Lines -> the utterances to speak: [{ lang, src, text }]. Precedence per
+  // chunk: a lang attribute, then def (the side's language). Neighbouring
+  // chunks in the same language are merged, so a card with no lang attributes
+  // is still a single utterance, exactly as before.
+  function speechSegments(lines, def) {
+    var out = [];
+    for (var i = 0; i < lines.length; i++) {
+      var runs = lines[i].runs;
+      for (var j = 0; j < runs.length; j++) {
+        var own = normLang(runs[j].lang);
+        var lang = own || def.lang, t = runs[j].t;
+        if (j === runs.length - 1) t = speechJoin([t]);       // end the line with a pause
+        var last = out.length ? out[out.length - 1] : null;
+        if (last && last.lang === lang) last.text += " " + t;
+        else out.push({ lang: lang, src: own ? "attribute" : def.src, text: t });
+      }
+    }
+    return out;
   }
 
   // Punctuation only: ASCII symbols plus the common Unicode punctuation blocks.
@@ -561,7 +1061,8 @@
     mo: "month", mon: "month", mth: "month", mths: "month", month: "month",
     y: "year", yr: "year", yrs: "year", year: "year"
   };
-  function expandIvl(s) {
+  // loc (optional) is a language pack: { units: { day: ["dia", "dias"] }, lessThan }.
+  function expandIvl(s, loc) {
     if (s == null) return "";
     s = String(s);
     try { s = s.normalize("NFKC"); } catch (e) {}
@@ -575,12 +1076,14 @@
       var word = AV_UNITS[unit.toLowerCase()];
       if (!word) return num + " " + unit;
       var val = parseFloat(num.replace(",", "."));
-      if (!isNaN(val) && val !== 1) word += "s";
+      var plural = !isNaN(val) && val !== 1;
+      if (loc && loc.units && loc.units[word]) word = loc.units[word][plural ? 1 : 0];
+      else if (plural) word += "s";
       return num + " " + word;
     });
     s = s.replace(/([A-Za-z])(\d)/g, "$1 $2");
     s = s.replace(/\s+/g, " ").trim();
-    return (approx ? "less than " : "") + s;
+    return (approx ? ((loc && loc.lessThan) || "less than ") : "") + s;
   }
   function unwrapValue(r) {
     if (r == null) return "";
@@ -603,15 +1106,10 @@
   // Spoken once per session, in place of the full command list. Reading out every
   // command before the first card was a long thing to sit through when you
   // already know them; "help" still gives the full list whenever you want it.
-  var AV_GREETING = "AnkiVoice is on. Say help, to list the voice commands available.";
+  // (The greeting is T("greeting"); every spoken string lives in AV_L10N.)
   function commandsText(onAns) {
-    if (onAns) return "Mark it: again, hard, good, or easy.";
-    return "Voice commands. Say answer, to reveal the answer." +
-      (CFG.detectAnswer ? " Or just say the answer itself, and if it's right I'll mark it good." : "") +
-      " Say skip, to bury the card and come back to it later." +
-      " Say pause, to pause the microphone for " + CFG.pauseSeconds + " seconds while you think." +
-      " Say off, to turn the voice off until you tap the bar." +
-      " Say help, to hear these commands again.";
+    if (onAns) return T("gradeHelp");
+    return T("helpIntro") + (CFG.detectAnswer ? T("helpDetect") : "") + T("helpRest", { n: CFG.pauseSeconds });
   }
 
   // A command triggers if the heard text contains any word from its editable list
@@ -727,7 +1225,7 @@
     paused = false;
     var myGen = ++window.__avGen;
     function dead() { return myGen !== window.__avGen; }
-    var mainText = "", onAnswer = false, tries = 0, noMatch = 0, listening = false;
+    var mainSegs = [], onAnswer = false, tries = 0, noMatch = 0, listening = false;
     var pendingGrade = null;   // a positive spoken grade, held while we ask about remembering
 
     try { if (api) api.ankiSttStop(); } catch (e) {}   // stop any mic left over from a previous flow
@@ -752,9 +1250,14 @@
       return !dead();
     }
 
-    async function speak(text) {
+    // lang defaults to the command language: everything AnkiVoice says for
+    // itself ("Mark it.", "Card buried.") is in that language, whatever the card
+    // is in. The language is set per utterance, because one side can now
+    // need several.
+    async function speak(text, lang) {
       if (!text) return;
       try {
+        await setTtsLang(lang || promptLang());
         await api.ankiTtsSpeak(text);
         // Poll straight away rather than sleeping a flat 700ms per utterance, but
         // allow a grace window for TTS to report "speaking" before giving up, and
@@ -771,13 +1274,32 @@
       } catch (e) { S("AV tts err: " + e); }
     }
 
+    async function speakSegs(segs) {
+      for (var i = 0; i < segs.length; i++) {
+        if (dead()) return;
+        await speak(segs[i].text, segs[i].lang);
+      }
+    }
+    // The once-a-session greeting leads. It shares an utterance with the card
+    // when they are in the same language (as it always did), and gets its own
+    // when the card is in another.
+    function withGreeting(segs) {
+      var pl = promptLang();
+      if (segs.length && segs[0].lang === pl) {
+        var first = { lang: pl, src: segs[0].src, text: T("greeting") + " . . . " + segs[0].text };
+        return [first].concat(segs.slice(1));
+      }
+      return [{ lang: pl, src: "global", text: T("greeting") }].concat(segs);
+    }
+    function nothingToRead() {
+      return [{ lang: promptLang(), src: "global", text: T("nothing") }];
+    }
+
     async function pauseMic(kind) {
       paused = true; letSleep();
       S("Paused \u2014 tap to listen again");
-      var why = (kind === "noise")
-        ? "I keep hearing words I don't know."
-        : (onAnswer ? "Grade not heard." : "Answer command not heard.");
-      await speak(why + " Microphone paused. Tap the button to listen again.");
+      var why = (kind === "noise") ? T("noise") : T(onAnswer ? "gradeNotHeard" : "answerNotHeard");
+      await speak(why + T("micPaused"));
     }
 
     // "Again" means you got it wrong, so there is nothing worth remembering.
@@ -789,7 +1311,7 @@
       if (!CFG.rememberAnswers || !unmatched || kept || ease === 1) return grade(ease, label);
       pendingGrade = { ease: ease, label: label };
       S("Remember \"" + unmatched + "\"?");
-      await speak("Should I remember, " + unmatched + ", as a right answer for this card?");
+      await speak(T("remember", { x: unmatched }));
       if (dead()) return;
       return listen();
     }
@@ -797,7 +1319,7 @@
     async function gradeCue() {
       var aDone = lsGet("av_adone") === "1";
       lsSet("av_adone", "1");
-      await speak(aDone ? "Mark it." : commandsText(true));
+      await speak(aDone ? T("markIt") : commandsText(true));
       if (dead()) return;
       var ms = CFG.markMicDelayMs;
       if (ms >= 1000) {
@@ -815,9 +1337,9 @@
       if (CFG.announceInterval) {
         var ivl = await nextTimeFor(ease);
         if (dead()) return;
-        spoken = ivl ? expandIvl(ivl) : "";
+        spoken = ivl ? expandIvl(ivl, cmdPack) : "";
       }
-      var phrase = "Marked " + label + (spoken ? ", next review in " + spoken : "");
+      var phrase = T("marked", { g: T("g" + ease) }) + (spoken ? T("nextIn", { t: spoken }) : "");
       S("\u2713 " + label + (spoken ? " \u2192 " + spoken : ""));
       await speak(phrase);
       if (dead()) return;
@@ -836,7 +1358,7 @@
       if (!res.success) {
         if (/permission/i.test(res.value)) {
           S("\u26A0 Grant AnkiDroid the Microphone permission");
-          await speak("Microphone permission is missing.");
+          await speak(T("noMicPerm"));
           return;
         }
         if (pendingGrade) {                            // no reply to "remember this?"
@@ -868,20 +1390,24 @@
           if (!saved) kept = false;
           markKept(saved);
           if (dead()) return;
-          await speak(saved ? "Saved." : "Sorry, I could not save that.");
+          await speak(saved ? T("saved") : T("notSaved"));
           if (dead()) return;
         }
         return grade(pg.ease, pg.label);
       }
       if (matched("stop")) { paused = true; letSleep(); S("Paused \u2014 tap to listen again"); return; }
-      if (matched("off")) { lsSet("av_on", "0"); stopFlow(); paintOff(); try { if (api) api.ankiTtsSpeak("Voice off."); } catch (e) {} return; }
+      if (matched("off")) {
+        lsSet("av_on", "0"); stopFlow(); paintOff();
+        try { if (api) { await setTtsLang(promptLang()); api.ankiTtsSpeak(T("off")); } } catch (e) {}
+        return;
+      }
       if (matched("help")) { await speak(commandsText(onAnswer)); if (dead()) return; return listen(); }
       if (matched("pause")) {
         if (!(await countdown(CFG.pauseSeconds * 1000, "Resuming in"))) return;
         return listen();
       }
-      if (matched("repeat")) { await speak(mainText); if (dead()) return; return listen(); }
-      if (matched("skip")) { S("Card buried"); await speak("Card buried."); if (dead()) return; api.ankiBuryCard(); return; }
+      if (matched("repeat")) { await speakSegs(mainSegs); if (dead()) return; return listen(); }
+      if (matched("skip")) { S("Card buried"); await speak(T("buried")); if (dead()) return; api.ankiBuryCard(); return; }
       if (!onAnswer) {
         if (matched("answer")) { api.ankiShowAnswer(); return; }
         if (CFG.detectAnswer) {
@@ -924,19 +1450,30 @@
         var d = await api.ankiIsDisplayingAnswer();
         onAnswer = String(unwrapValue(d)) === "true";
         if (dead()) return;
-        try { await api.ankiTtsSetLanguage(CFG.ttsLang || "en-US"); } catch (e) {}
+        // Speech language: decided per chunk (see speechSegments) and set per
+        // utterance (see speak). Recognition follows the command language
+        // unless a setting or the template says otherwise - commands are
+        // spoken in the user's own language, whatever the deck teaches.
+        var tpl = { front: "", back: "", stt: "" };
+        try { tpl = templateLangs(window.ANKIVOICE_LANG); } catch (e) {}
+        var front = sideLang(tpl, "front", CFG.ttsLang), back = sideLang(tpl, "back", CFG.ttsLang);
+        var stt = tpl.stt || normLang(CFG.sttLang) || cmdLang.lang;
+        var sttSrc = tpl.stt ? "template" : (normLang(CFG.sttLang) ? "global" : "commands");
         // Not in every AnkiDroid build; harmless where it is missing.
         try {
-          if (typeof api.ankiSttSetLanguage === "function") await api.ankiSttSetLanguage(CFG.sttLang || CFG.ttsLang || "en-US");
+          if (typeof api.ankiSttSetLanguage === "function") await api.ankiSttSetLanguage(stt);
         } catch (e) {}
         if (!resume) S("Reading\u2026 \u2014 tap to turn off");
         if (CFG.voiceTest) showHeard("Voice test on \u2014 say a word to see what's heard");
 
         var thinkMs;
         if (!onAnswer) {
-          var qLines = extractLines(document.body);
-          lsSet("av_qlines", JSON.stringify(qLines));
-          mainText = speechJoin(qLines).replace(/\[\.\.\.\]/g, ", blank,") || "There's nothing for me to read on this card.";
+          var qLL = extractLangLines(document.body);
+          lsSet("av_qlines", JSON.stringify(textsOf(qLL)));
+          mainSegs = speechSegments(qLL, front);
+          for (var qi = 0; qi < mainSegs.length; qi++) mainSegs[qi].text = mainSegs[qi].text.replace(/\[\.\.\.\]/g, ", blank,");
+          if (!mainSegs.length) mainSegs = nothingToRead();
+          lastRead = { side: "front", segs: mainSegs, front: front, back: back, stt: stt, sttSrc: sttSrc };
           if (resume) {
             thinkMs = 0;                        // already read; go straight to the mic
           } else {
@@ -945,17 +1482,22 @@
             lsSet("av_qdone", "1");
             // The greeting leads, since it announces the session rather than
             // commenting on the card that was just read.
-            await speak((qDone ? "" : AV_GREETING + " . . . ") + mainText);
+            await speakSegs(qDone ? mainSegs : withGreeting(mainSegs));
             thinkMs = CFG.thinkDelayQuestionMs;
           }
         } else {
-          var allLines = extractLines(document.body);
+          var allLL = extractLangLines(document.body);
           var ql = [];
           try { ql = JSON.parse(lsGet("av_qlines") || "[]"); } catch (e) {}
-          var ansLines = subtractLines(allLines, ql);
-          if (!ansLines.length) ansLines = hrLines();
-          if (!ansLines.length) ansLines = allLines;
-          mainText = speechJoin(ansLines) || "There's nothing for me to read on this card.";
+          // The answer is read in the back language. If the back adds nothing
+          // new, what gets read is the question again - in the front language.
+          var ansLL = subtractLines(allLL, ql), ansDef = back;
+          if (!ansLL.length) ansLL = hrLines();
+          if (!ansLL.length) { ansLL = allLL; ansDef = front; }
+          var ansLines = textsOf(ansLL);
+          mainSegs = speechSegments(ansLL, ansDef);
+          if (!mainSegs.length) mainSegs = nothingToRead();
+          lastRead = { side: "back", segs: mainSegs, front: front, back: back, stt: stt, sttSrc: sttSrc };
 
           if (resume) {
             thinkMs = 0;                        // already read; go straight to the mic
@@ -970,7 +1512,7 @@
             if (dead()) return;
             var pool = known.length ? ansLines.concat(known) : ansLines;
             if (CFG.detectAnswer && attempts.length && anyAnswerMatches(attempts, pool, CFG.answerCoverage)) {
-              await speak("Correct.");
+              await speak(T("correct"));
               if (dead()) return;
               api.ankiAnswerEase3();                              // recognised -> Good, skip grading
               return;
@@ -978,10 +1520,10 @@
 
             if (CFG.detectAnswer && attempts.length) {
               unmatched = attempts[0];                            // may be worth remembering
-              await speak("Answer not recognized.");              // attempted but no match
+              await speak(T("notRecognized"));              // attempted but no match
               if (dead()) return;
             }
-            await speak(mainText);                                // read the answer
+            await speakSegs(mainSegs);                            // read the answer
             if (dead()) return;
             if (CFG.rememberAnswers && unmatched) offerKeep(unmatched);   // for button graders
             return gradeCue();
@@ -1023,12 +1565,6 @@
   lsSet("av_ts", String(nowTs));
 
   // ---------------- settings panel (gear on the far right) ----------------
-  // Common BCP-47 tags, offered as chips so a language can be set without typing.
-  var AV_LANGS = [
-    "en-US", "en-GB", "fr-FR", "de-DE", "es-ES", "it-IT", "pt-BR", "nl-NL",
-    "pl-PL", "ru-RU", "sv-SE", "tr-TR", "ja-JP", "ko-KR", "zh-CN", "ar-SA",
-    "hi-IN", "he-IL", "cs-CZ", "el-GR", "id-ID", "vi-VN"
-  ];
   var AV_SETTINGS = [
     { k: "detectAnswer",        label: "Detect spoken answers",       type: "bool" },
     { k: "keepScreenAwake",     label: "Keep screen awake",           type: "bool" },
@@ -1044,7 +1580,8 @@
     { k: "announceInterval",    label: "Announce next interval",       type: "bool" },
     { k: "maxNoMatchTries",     label: "Unknown replies before pausing", type: "num", min: 2, max: 40, step: 1, unit: "" },
     { k: "ttsLang",  label: "Speech language", type: "text", ph: "e.g. en-US, fr-FR, de-DE", opts: AV_LANGS },
-    { k: "sttLang",  label: "Recognition language", type: "text", ph: "e.g. en-US (ignored if unsupported)", opts: AV_LANGS },
+    { k: "uiLang",   label: "Command language", type: "text", ph: "auto = the phone's language", opts: AV_CMD_LANGS, after: cmdLangChanged },
+    { k: "sttLang",  label: "Recognition language", type: "text", ph: "auto = same as Command language", opts: ["auto"].concat(AV_LANGS) },
     { k: "words_answer", label: "Extra words \u2192 Answer", type: "words" },
     { k: "words_again",  label: "Extra words \u2192 Again",  type: "words" },
     { k: "words_hard",   label: "Extra words \u2192 Hard",   type: "words" },
@@ -1117,10 +1654,44 @@
       "line-height:1;cursor:pointer;user-select:none;-webkit-user-select:none;" + css;
     return c;
   }
+  // The command language changed in the panel: swap the default word lists
+  // over, then repaint every row, since the chips of thirteen of them changed.
+  function cmdLangChanged() {
+    applyCmdLang();
+    saveCfg();
+    for (var i = 0; i < refreshers.length; i++) refreshers[i]();
+  }
   function resetCfg() {
+    CFG.uiLang = CFG_DEFAULTS.uiLang;
+    applyCmdLang();                       // the default word lists depend on it
     for (var k in CFG_DEFAULTS) CFG[k] = CFG_DEFAULTS[k];
     saveCfg();
     for (var i = 0; i < refreshers.length; i++) refreshers[i]();
+  }
+  var AV_SRC = {
+    attribute: "lang attribute", template: "template", global: "global setting",
+    system: "phone language", fallback: "no pack for the phone language", commands: "same as commands"
+  };
+  function langReport() {
+    var r = lastRead, out = [], i;
+    if (!r) return "Languages: nothing has been read on this side yet.";
+    out.push("Languages on this " + (r.side === "back" ? "answer" : "question") + " side");
+    out.push("Front: " + r.front.lang + " (" + AV_SRC[r.front.src] + ")" + (r.side === "front" ? "  \u2190 this side" : ""));
+    out.push("Back: " + r.back.lang + " (" + AV_SRC[r.back.src] + ")" + (r.side === "back" ? "  \u2190 this side" : ""));
+    out.push("Commands & prompts: " + cmdLang.lang + " (" + AV_SRC[cmdLang.src] + ")");
+    out.push("Recognition: " + r.stt + " (" + AV_SRC[r.sttSrc] + ")");
+    out.push("Read aloud here:");
+    for (i = 0; i < r.segs.length && i < 8; i++) {
+      var t = r.segs[i].text;
+      if (t.length > 34) t = t.slice(0, 32) + "\u2026";
+      out.push("  " + (i + 1) + ". " + r.segs[i].lang + " \u00B7 " + AV_SRC[r.segs[i].src] + " \u00B7 " + t);
+    }
+    if (r.segs.length > 8) out.push("  \u2026 and " + (r.segs.length - 8) + " more");
+    for (var k in langFail) {
+      out.push("\u26A0 " + k + ": the phone's text-to-speech engine has no voice for this " +
+               "language (code " + langFail[k] + "), so it was read in the previous one.");
+    }
+    return out.join("\n");
   }
   function mkBtn(txt, css) { var b = document.createElement("button"); b.textContent = txt; b.style.cssText = css; return b; }
   function buildPanel() {
@@ -1143,6 +1714,14 @@
     panelNote.style.cssText = "display:none;margin:8px 0;padding:10px;border-radius:8px;" +
       "background:#5d4037;color:#fff;font-size:14px;line-height:1.4;";
     box.appendChild(panelNote);
+    // Which language this side is being read in, and why - the only way to
+    // debug a template's language setup on the phone.
+    var langInfo = document.createElement("div");
+    langInfo.id = "av-langinfo";
+    langInfo.style.cssText = "margin:8px 0;padding:10px;border-radius:8px;background:#263238;" +
+      "color:#fff;font-size:13px;line-height:1.5;white-space:pre-wrap;word-break:break-word;";
+    box.appendChild(langInfo);
+    refreshers.push(function () { langInfo.textContent = langReport(); });
     AV_SETTINGS.forEach(function (s) {
       var isWords = (s.type === "words" || s.type === "text");
       var row = document.createElement("div");
@@ -1162,7 +1741,7 @@
           "color:#fff;font-size:16px;-webkit-user-select:text;user-select:text;" +
           "-webkit-touch-callout:default;touch-action:manipulation;";
         var focusIt = function () { try { inp.focus(); if (inp.setSelectionRange) inp.setSelectionRange(inp.value.length, inp.value.length); } catch (x) {} };
-        inp.oninput = (function (el, key) { return function () { CFG[key] = el.value; saveCfg(); if (el.__chips) el.__chips(); }; })(inp, s.k);
+        inp.oninput = (function (el, key) { return function () { CFG[key] = el.value; saveCfg(); if (el.__chips) el.__chips(); if (s.after) s.after(); }; })(inp, s.k);
         inp.addEventListener("click", function (e) { e.stopPropagation(); focusIt(); });
         inp.addEventListener("touchend", function (e) { e.stopPropagation(); focusIt(); });
         inp.addEventListener("touchstart", function (e) { e.stopPropagation(); }, { passive: true });
@@ -1186,6 +1765,7 @@
                   c.onclick = function (e) {
                     e.stopPropagation();
                     CFG[key] = val; saveCfg(); renderOpts(); inp.value = val;
+                    if (s.after) s.after();
                   };
                   chipsT.appendChild(c);
                 })(opts[oi]);

@@ -220,6 +220,57 @@ verified by reading the AnkiDroid source (branch `v2.24.0`).
   (because `localStorage` dies with the port); `saveCfg()` now refuses and says
   so in the panel.
 
+- **Three languages, not one.** v39 separates the *card* language (what each
+  chunk of card text is read in), the *command* language (AnkiVoice's own
+  prompts and trigger words) and the *recognition* language. They were one
+  setting, which only works when the cards are in the user's own language.
+  - Card language precedence is `lang` attribute, then
+    `window.ANKIVOICE_LANG.front/.back`, then `CFG.ttsLang`. A global was chosen
+    over a data attribute because the Back template usually includes
+    `{{FrontSide}}`: a global set twice to the same value is harmless, whereas
+    two config elements in one page would need a tie-break rule.
+  - `lang` is only honoured on elements *inside* `<body>`. AnkiDroid's page
+    template sets none on `<html>`/`<body>` today, but if it ever does, it must
+    not silently override every template's configuration.
+  - `ankiTtsSetLanguage` is now called **per utterance**, guarded by a
+    remembered last value. `JavaScriptTTS.setLanguage` goes to
+    `TextToSpeech.setLanguage`, which stores the language in the params that
+    Android copies at `speak()` time, so switching between utterances is safe.
+    It returns Android's status code; a negative one (`LANG_MISSING_DATA`,
+    `LANG_NOT_SUPPORTED`) means the engine kept its previous language, and the
+    settings panel reports that. **Assumed, not verified on a device:** that
+    the JS API hands that code back as `value`.
+  - AnkiDroid parses the code with
+    `LanguageUtils.localeFromStringIgnoringScriptAndExtensions`, which splits on
+    `_` and otherwise calls `Locale.forLanguageTag`; both `ja_JP` and `ja-JP`
+    work. We send the hyphenated form.
+  - A bare language is given a region (`de` → `de-DE`) because an engine asked
+    for plain `de` chooses a regional voice by its own rules — alphabetical in
+    at least one engine, i.e. Austrian.
+  - Text is extracted once, as lines made of language runs
+    (`extractLangLines`), and `extractLines` is derived from it, so the strings
+    used for question/answer subtraction cannot drift from what is spoken.
+    Neighbouring chunks in the same language are merged, which keeps a card
+    with no `lang` attributes a single utterance, as it was before.
+- **Anki's `{{tts lang:Field}}` tags cannot be used as a language source.**
+  Checked against AnkiDroid's `SoundUtils.expandSounds`: a TTS tag is replaced
+  by `<a class="replay-button soundLink" href=playsound:q:0>` wrapping an SVG.
+  The language and the field text live in the card's AV tags on the Kotlin
+  side; nothing in the DOM carries them, and the JS API exposes only
+  `ankiTtsFieldModifierIsAvailable`. The SVG does contain the literal text
+  "Replay", which the extractor was reading aloud; it now skips those buttons.
+- **The command language is applied by swapping the DEFAULT word lists.**
+  `applyCmdLang()` rewrites `CFG_DEFAULTS.words_*` (and any list still equal to
+  its default) from the pack. The alternative, merging pack words into the
+  English lists at match time, would have left the panel showing words that are
+  not live and made English "no" (Again) fire on Portuguese "no" ("in the").
+  Going through the defaults keeps the chips, Reset and the sparse cookie
+  working unchanged. It must run before saved settings are applied, which is
+  why the language tables sit above `CFG`.
+- **No CJK or Thai command packs.** `said()` matches whole space-delimited
+  words; those recognizers return unsegmented text. A pack would need substring
+  matching, with its own false-positive problem.
+
 ## Proposed upstream patch (fewer beeps, no getUserMedia needed)
 
 In `JavaScriptSTT.kt`, add silence-length extras to the recognition intent and
@@ -262,6 +313,8 @@ change would add `MODIFY_AUDIO_SETTINGS` + set the `AudioManager` mode to unlock
   and CSS `inset`, so the real floor is roughly Chrome 87 / Android 10 System
   WebView. The style rule is about staying easy to read and easy to eval, not
   about supporting genuinely ancient WebViews.
-- Per-side TTS language (e.g. English front, French back) — the API supports
-  `ankiTtsSetLanguage`; would help language decks.
+- ~~Per-side TTS language~~ — done in v39 (see "Three languages, not one").
+  Still to verify on a device: the status code returned by
+  `ankiTtsSetLanguage`, and how well each pack's command words survive its
+  recognizer.
 - File / champion the upstream `JavaScriptSTT` patch above.

@@ -44,13 +44,22 @@ function makeApiClass(state) {
     // moment later; the plugin's grace window exists for exactly that gap.
     ankiTtsSpeak(t) {
       state.spoken.push(t);
+      state.spokenIn.push([state.ttsLang, t]);   // which language each utterance went out in
       state.speaking = true;
       setTimeout(() => { state.speaking = false; }, 40);
       return reply("true");
     }
     ankiTtsIsSpeaking() { return reply(state.speaking ? "true" : "false"); }
     ankiTtsStop() { state.speaking = false; return reply("true"); }
-    ankiTtsSetLanguage(l) { state.ttsLang = l; return reply("true"); }
+    // Like Android: answers a status code, and a language the engine does not
+    // have (-2, LANG_NOT_SUPPORTED) leaves the previous one in force.
+    ankiTtsSetLanguage(l) {
+      state.langSets.push(l);
+      if (state.badLangs.indexOf(l) >= 0) return reply("-2");
+      state.ttsLang = l;
+      return reply("1");
+    }
+    ankiSttSetLanguage(l) { state.sttLang = l; return reply("true"); }
     ankiSttStart() { state.micStarts++; return reply("true"); }
     ankiSttStop() { return reply("true"); }
     ankiIsDisplayingAnswer() { return reply(state.onAnswer ? "true" : "false"); }
@@ -83,6 +92,9 @@ async function boot(html, opts) {
     speaking: false, onAnswer: !!opts.onAnswer, errors: [],
     nid: "1234", tags: (opts.tags || []).slice(), tagWrites: [], added: [],
     tagReads: 0, tagsBroken: !!opts.tagsBroken, noAddTag: !!opts.noAddTag,
+    // the native TTS keeps its language between cards; start from a "wrong" one
+    ttsLang: opts.nativeLang || "xx-XX", sttLang: null, spokenIn: [], langSets: [],
+    badLangs: opts.badLangs || [],
   };
   const dom = new JSDOM("<!doctype html><html><body>" + html + "</body></html>", {
     url: "http://127.0.0.1:41234/",
@@ -91,6 +103,8 @@ async function boot(html, opts) {
   });
   const win = dom.window;
   win.AnkiDroidJS = makeApi(state);
+  if (opts.langCfg !== undefined) win.ANKIVOICE_LANG = opts.langCfg;      // what the template's <script> line does
+  if (opts.sysLang) Object.defineProperty(win.navigator, "language", { value: opts.sysLang, configurable: true });
   win.HTMLMediaElement.prototype.play = function () { return Promise.resolve(); };
   win.addEventListener("error", (e) => state.errors.push("error: " + e.message));
   win.addEventListener("unhandledrejection", (e) => state.errors.push("rejection: " + e.reason));
@@ -551,6 +565,241 @@ const silence = () => JSON.stringify({ success: false, value: "No speech input" 
     ok("an oversized settings blob warns in the panel",
        !!note && note.style.display === "block" && note.textContent.indexOf("too long to store") >= 0);
     ok("the oversized blob is not written to the cookie", win.document.cookie.indexOf("av_cfg=") < 0);
+  }
+
+  // =====================================================================
+  // v39: languages. spokenIn is [language, text] per utterance, as recorded
+  // by the fake API at the moment ankiTtsSpeak was called.
+  // =====================================================================
+  const langOf = (state, needle) => {
+    const hit = state.spokenIn.find(([, t]) => t.includes(needle));
+    return hit ? hit[0] : null;
+  };
+  const openPanel = async (win, doc) => {
+    doc.getElementById("av-gear").dispatchEvent(new win.MouseEvent("click", { bubbles: true }));
+    await wait(20);
+    return doc.getElementById("av-settings");
+  };
+
+  // ---------- nothing configured: exactly the old behaviour ----------
+  {
+    const { state } = await boot("<div>Capital of Mali?</div>");
+    ok("unconfigured: one utterance, greeting and question together", state.spokenIn.length === 1);
+    ok("unconfigured: spoken in the global language", state.spokenIn[0][0] === "en-US");
+    ok("unconfigured: recognition is en-US", state.sttLang === "en-US");
+  }
+  {
+    // the global setting is still the fallback for card text
+    const { state } = await boot("<div>Capitale du Mali ?</div>", { cfg: { ttsLang: "fr-FR" } });
+    ok("global Speech language reads the card", langOf(state, "Capitale du Mali") === "fr-FR");
+    ok("...while the prompt stays in the command language", langOf(state, "AnkiVoice is on") === "en-US");
+  }
+
+  // ---------- template: front in one language, back in another ----------
+  const JA_EN = { front: "ja-JP", back: "en-US" };
+  {
+    const { win, state, doc } = await boot("<div>\u732B</div>", { langCfg: JA_EN, storage: { av_qdone: "1", av_ts: String(Date.now()) } });
+    ok("front is read in the template's front language", langOf(state, "\u732B") === "ja-JP");
+    ok("the question is the only utterance", state.spokenIn.length === 1);
+    win.ankiSttResult(heard("repeat"));
+    await wait(300);
+    ok("repeat re-reads in the same language", state.spokenIn.filter(([l, t]) => l === "ja-JP" && t.includes("\u732B")).length === 2);
+    const panel = await openPanel(win, doc);
+    const info = doc.getElementById("av-langinfo").textContent;
+    ok("the panel shows the front language and its source", /Front: ja-JP \(template\)\s+\u2190 this side/.test(info));
+    ok("the panel shows the back language", info.includes("Back: en-US (template)"));
+    ok("the panel lists what was read, with language and source", /1\. ja-JP \u00B7 template \u00B7 \u732B/.test(info));
+    ok("the panel shows the recognition language", info.includes("Recognition: en-US (same as commands)"));
+    ok("the language box is not read aloud", !!panel && doc.getElementById("av-langinfo").closest("#av-settings") === panel);
+  }
+  {
+    // first card of a session: the greeting is English, the card is not
+    const { state } = await boot("<div>\u732B</div>", { langCfg: JA_EN });
+    ok("the greeting gets its own utterance in the command language", langOf(state, "AnkiVoice is on") === "en-US");
+    ok("...and does not drag the card into it", !state.spokenIn.some(([, t]) => t.includes("AnkiVoice") && t.includes("\u732B")));
+    ok("the card follows in its own language", langOf(state, "\u732B") === "ja-JP");
+    ok("greeting first", state.spokenIn[0][1].includes("AnkiVoice is on"));
+  }
+  {
+    const { win, state } = await boot(
+      '<div>\u732B</div><hr id="answer"><div>cat</div>',
+      { onAnswer: true, langCfg: JA_EN, storage: { av_qlines: JSON.stringify(["\u732B"]), av_adone: "1" } }
+    );
+    ok("the answer is read in the back language", langOf(state, "cat") === "en-US");
+    ok("the question is not re-read", !state.spokenIn.some(([, t]) => t.includes("\u732B")));
+    ok("the grade cue is in the command language", langOf(state, "Mark it") === "en-US");
+    win.ankiSttResult(heard("good"));
+    await wait(400);
+    ok("grading still works", state.graded[0] === 3);
+  }
+  {
+    // reverse card: English front, Japanese back - prompts must switch back
+    const { state } = await boot(
+      '<div>cat</div><hr id="answer"><div>\u732B</div>',
+      { onAnswer: true, langCfg: { front: "en", back: "ja_JP" }, storage: { av_qlines: JSON.stringify(["cat"]), av_adone: "1" } }
+    );
+    ok("codes are normalized (ja_JP -> ja-JP)", langOf(state, "\u732B") === "ja-JP");
+    ok("the prompt after a Japanese answer is English again", langOf(state, "Mark it") === "en-US");
+    ok("the language is switched per utterance", state.langSets.join(",") === "ja-JP,en-US");
+  }
+  {
+    // the back adds nothing new: what is read is the question again, in the FRONT language
+    const { state } = await boot("<div>\u732B</div>",
+      { onAnswer: true, langCfg: JA_EN, storage: { av_qlines: JSON.stringify(["\u732B"]), av_adone: "1" } });
+    ok("re-read question text uses the front language", langOf(state, "\u732B") === "ja-JP");
+  }
+
+  // ---------- lang attributes: per chunk, over the template ----------
+  {
+    const { win, state, doc } = await boot(
+      '<div>\u732B</div><hr id="answer"><div>cat, as in <span lang="de">Katze</span> or <b lang="fr_FR">chat</b></div><div lang="ja">\u306D\u3053</div>',
+      // five utterances take longer than the default settle
+      { onAnswer: true, langCfg: JA_EN, settle: 1500, storage: { av_qlines: JSON.stringify(["\u732B"]), av_adone: "1" } }
+    );
+    const seq = state.spokenIn.slice(0, 5).map(([l, t]) => l + ":" + t);
+    ok("a mixed side is split into chunks, each in its language: " + JSON.stringify(seq),
+       JSON.stringify(seq) === JSON.stringify([
+         "en-US:cat, as in", "de-DE:Katze", "en-US:or", "fr-FR:chat.", "ja-JP:\u306D\u3053."]));
+    await openPanel(win, doc);
+    const info = doc.getElementById("av-langinfo").textContent;
+    ok("the panel marks attribute chunks", info.includes("de-DE \u00B7 lang attribute \u00B7 Katze"));
+    ok("...and template chunks", info.includes("en-US \u00B7 template \u00B7 cat, as in"));
+    ok("the panel knows this is the answer side", /Back: en-US \(template\)\s+\u2190 this side/.test(info));
+  }
+  {
+    // attribute over the GLOBAL setting, with no template line at all
+    const { state } = await boot('<div><span lang="es">hola</span> means hello</div>', { storage: { av_qdone: "1", av_ts: String(Date.now()) } });
+    ok("a lang attribute works without any template line", langOf(state, "hola") === "es-ES");
+    ok("the rest of the line stays global", langOf(state, "means hello") === "en-US");
+  }
+  {
+    // the answer sits after the <hr> inside a lang wrapper and repeats a question line
+    const { state } = await boot(
+      '<div lang="ja"><div>same</div><hr id="answer"><div>same</div></div>',
+      { onAnswer: true, storage: { av_qlines: JSON.stringify(["same"]), av_adone: "1" } }
+    );
+    ok("the <hr> fallback keeps the wrapper's language", langOf(state, "same") === "ja-JP");
+  }
+
+  // ---------- an engine without the voice is reported, not hidden ----------
+  {
+    const { win, state, doc } = await boot("<div>\u0E41\u0E21\u0E27</div>",
+      { langCfg: { front: "th-TH", back: "en-US" }, badLangs: ["th-TH"], nativeLang: "en-US", storage: { av_qdone: "1", av_ts: String(Date.now()) } });
+    ok("the card is still read", state.spoken.join(" ").includes("\u0E41\u0E21\u0E27"));
+    await openPanel(win, doc);
+    const info = doc.getElementById("av-langinfo").textContent;
+    ok("the panel warns that the engine has no voice for th-TH", /\u26A0 th-TH: .*no voice/.test(info));
+    ok("no error surfaced", state.errors.length === 0);
+  }
+
+  // ---------- recognition: global by default, template can override ----------
+  {
+    const { state } = await boot("<div>Q</div>", { cfg: { sttLang: "fr-FR" } });
+    ok("the Recognition language setting is applied", state.sttLang === "fr-FR");
+  }
+  {
+    const { win, state, doc } = await boot("<div>Q</div>", { langCfg: { front: "th", back: "en", stt: "pt_BR" } });
+    ok("the template can override recognition", state.sttLang === "pt-BR");
+    await openPanel(win, doc);
+    ok("...and the panel says so", doc.getElementById("av-langinfo").textContent.includes("Recognition: pt-BR (template)"));
+  }
+  {
+    // a pre-v37 blob that dumped sttLang:"en-US" must not pin recognition to English
+    const { state } = await boot("<div>Q</div>", { sysLang: "pt-BR",
+      legacyCfg: { thinkDelayQuestionMs: 0, markMicDelayMs: 0, restartGapMs: 0, sttLang: "en-US", ttsLang: "en-US" } });
+    ok("a legacy default sttLang does not override the command language", state.sttLang === "pt-BR");
+  }
+
+  // ---------- command language: the phone is Portuguese, the deck is Thai/English ----------
+  const TH_EN = { front: "th-TH", back: "en-US" };
+  {
+    const { win, state, doc } = await boot("<div>\u0E41\u0E21\u0E27</div>", { sysLang: "pt-BR", langCfg: TH_EN });
+    ok("the greeting is in Portuguese", state.spokenIn[0][1].includes("AnkiVoice est\u00E1 ligado"));
+    ok("...spoken with a Portuguese voice", state.spokenIn[0][0] === "pt-BR");
+    ok("the card is still read in Thai", langOf(state, "\u0E41\u0E21\u0E27") === "th-TH");
+    ok("recognition follows the command language", state.sttLang === "pt-BR");
+
+    win.ankiSttResult(heard("ajuda"));
+    await wait(300);
+    ok("'ajuda' reads the Portuguese help", state.spoken.join(" ").includes("Comandos de voz"));
+    ok("the help text carries the pause length", /por 10 segundos/.test(state.spoken.join(" ")));
+
+    win.ankiSttResult(heard("answer"));
+    await wait(60);
+    ok("the English word no longer reveals", state.showAnswer === 0);
+    win.ankiSttResult(heard("a resposta"));
+    await wait(60);
+    ok("'resposta' reveals the answer", state.showAnswer === 1);
+
+    await openPanel(win, doc);
+    ok("the panel shows where the command language came from",
+       doc.getElementById("av-langinfo").textContent.includes("Commands & prompts: pt-BR (phone language)"));
+    ok("nothing is saved just because the defaults are Portuguese",
+       !/words_/.test(win.localStorage.getItem("av_cfg")));
+  }
+  {
+    const { win, state } = await boot(
+      '<div>\u0E41\u0E21\u0E27</div><hr id="answer"><div>cat</div>',
+      { onAnswer: true, sysLang: "pt-PT", langCfg: TH_EN, storage: { av_qlines: JSON.stringify(["\u0E41\u0E21\u0E27"]), av_adone: "1" } }
+    );
+    ok("the answer is read in English", langOf(state, "cat") === "en-US");
+    ok("the grade cue is Portuguese, with the phone's region", langOf(state, "Avalie") === "pt-PT");
+    win.ankiSttResult(heard("dif\u00EDcil"));
+    await wait(400);
+    ok("'dif\u00EDcil' grades Hard", state.graded[0] === 2);
+    ok("the confirmation and interval are Portuguese",
+       state.spoken.join(" ").includes("Marcado como dif\u00EDcil, pr\u00F3xima revis\u00E3o em 8 minutos"));
+  }
+  {
+    // accents are folded, so an unaccented hypothesis still matches
+    const { win, state } = await boot('<div>Q</div><hr id="answer"><div>A</div>',
+      { onAnswer: true, sysLang: "pt-BR", storage: { av_qlines: JSON.stringify(["Q"]), av_adone: "1" } });
+    win.ankiSttResult(heard("facil"));
+    await wait(400);
+    ok("'facil' without the accent grades Easy", state.graded[0] === 4);
+  }
+  {
+    // no pack for the phone's language: stay English
+    const { state } = await boot("<div>Q</div>", { sysLang: "th-TH" });
+    ok("a phone language without a pack falls back to English prompts", langOf(state, "AnkiVoice is on") === "en-US");
+    ok("...and English recognition", state.sttLang === "en-US");
+  }
+  {
+    // an explicit Command language beats the phone
+    const { win, state } = await boot("<div>Q</div>", { sysLang: "pt-BR", cfg: { uiLang: "en-US" } });
+    ok("Command language en-US on a Portuguese phone speaks English", langOf(state, "AnkiVoice is on") === "en-US");
+    win.ankiSttResult(heard("answer"));
+    await wait(60);
+    ok("...and listens for English", state.showAnswer === 1);
+  }
+  {
+    // an edited word list survives a language it was not written for
+    const { win, state } = await boot("<div>Q</div>", { sysLang: "pt-BR", cfg: { words_answer: "abracadabra" } });
+    win.ankiSttResult(heard("resposta"));
+    await wait(60);
+    ok("an edited list is not replaced by the pack", state.showAnswer === 0);
+    win.ankiSttResult(heard("abracadabra"));
+    await wait(60);
+    ok("...and still works", state.showAnswer === 1);
+  }
+  {
+    // switching the Command language in the panel swaps the chips
+    const { win, doc } = await boot("<div>Q</div>", { cfg: { words_easy: "peasy" } });
+    const panel = await openPanel(win, doc);
+    const rowFor = (label) => [...panel.querySelectorAll("div")].find((d) => d.firstChild && d.firstChild.textContent === label);
+    const chip = (row, text) => [...row.querySelectorAll("span")].find((c) => c.textContent === text);
+    const cmd = rowFor("Command language");
+    ok("the Command language row exists, with an auto chip", !!cmd && !!chip(cmd, "auto") && !!chip(cmd, "de-DE"));
+    ok("Recognition language offers auto", !!chip(rowFor("Recognition language"), "auto"));
+    chip(cmd, "de-DE").dispatchEvent(new win.MouseEvent("click", { bubbles: true }));
+    await wait(20);
+    const hard = rowFor("Extra words \u2192 Hard");
+    ok("the Hard chips are now German", [...hard.querySelectorAll("span")].some((c) => /^schwer\s/.test(c.textContent)));
+    ok("...and the English ones are gone", ![...hard.querySelectorAll("span")].some((c) => /^hard\s/.test(c.textContent)));
+    ok("an edited list keeps its words", [...rowFor("Extra words \u2192 Easy").querySelectorAll("span")].some((c) => /^peasy\s/.test(c.textContent)));
+    const saved = JSON.parse(win.localStorage.getItem("av_cfg"));
+    ok("only the choice is saved, not the German defaults", saved.uiLang === "de-DE" && !("words_hard" in saved) && saved.words_easy === "peasy");
+    ok("the language box follows", doc.getElementById("av-langinfo").textContent.includes("Commands & prompts: de-DE (global setting)"));
   }
 
   // ---------- off-AnkiDroid: hide, and leave the card alone ----------

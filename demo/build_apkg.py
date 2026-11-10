@@ -52,6 +52,19 @@ inverted = genanki.Model(
     css=CSS,
 )
 
+# Per-side languages: Japanese front, English back, declared next to the loader.
+LANG = '\n<script>window.ANKIVOICE_LANG = { front: "ja-JP", back: "en-US" };</script>'
+languages = genanki.Model(
+    1607392403, "AnkiVoice Test (languages)",
+    fields=[{"name": "Front"}, {"name": "Back"}],
+    templates=[{
+        "name": "Card 1",
+        "qfmt": "{{Front}}" + LANG + LOADER,
+        "afmt": '{{FrontSide}}\n<hr id="answer">\n{{Back}}' + LANG + LOADER,
+    }],
+    css=CSS,
+)
+
 deck = genanki.Deck(1607392402, "AnkiVoice Test")
 
 deck.add_note(genanki.Note(model=basic, fields=[
@@ -65,6 +78,12 @@ deck.add_note(genanki.Note(model=basic, fields=[
 deck.add_note(genanki.Note(model=inverted, fields=[
     "Mali", "green / yellow / red vertical bands",
     "Flag similar to Guinea (green and red flipped).",
+]))
+
+# Front in Japanese; the back is English with one Japanese chunk marked by lang.
+deck.add_note(genanki.Note(model=languages, fields=[
+    "\u732b\u304c\u597d\u304d\u3067\u3059\u3002",
+    'I like cats.<br><span lang="ja">\u306d\u3053</span> means cat.',
 ]))
 
 pkg = genanki.Package(deck)
