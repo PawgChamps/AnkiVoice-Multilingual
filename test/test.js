@@ -485,6 +485,20 @@ eq("expandIvl localized singular", expandIvl("1mo", AV_L10N.pt), "1 m\u00EAs");
 eq("expandIvl localized less-than", expandIvl("<10m", AV_L10N.de), "weniger als 10 Minuten");
 eq("expandIvl without a pack is English", expandIvl("4d"), "4 days");
 
+// ---------------- the README's copy of the loader is the real loader ----------------
+// Phone-only users copy the snippet from the README, so it must not drift.
+(() => {
+  const loaderFile = fs.readFileSync(path.join(ROOT, "loader.html"), "utf8");
+  // the LAST script block: the comment above it also shows a <script> line
+  const script = loaderFile.slice(loaderFile.lastIndexOf("<script>")).trim();
+  ok("loader.html ends with one script block", script.startsWith("<script>") && script.endsWith("</script>"));
+  ok("README prints the loader exactly as loader.html has it", readme.includes(script));
+  // every language code the README offers is one the plugin accepts unchanged
+  const codes = readme.match(/`[a-z]{2,3}-[A-Z]{2}`/g) || [];
+  ok("README lists language codes", codes.length >= 24);
+  for (const c of codes) eq("README code " + c + " is already normalized", normLang(c.slice(1, -1)), c.slice(1, -1));
+})();
+
 // ---------------- version consistency ----------------
 (() => {
   const header = src.match(/^\s*VERSION:\s*(\d+)\s*$/m);

@@ -16,7 +16,7 @@ It also keeps the screen awake while you're actively reviewing and lets it sleep
 when you stop.
 
 **Made for language decks.** The front and back of a card can be read in
-different languages — Japanese question, English answer — and you keep talking
+different languages — a Spanish question, an English answer — and you keep talking
 to it in your own language, whatever the cards are in. See
 [Languages](#languages).
 
@@ -31,6 +31,47 @@ separate app**. It runs entirely inside AnkiDroid's built-in JavaScript API.
 > **AnkiDroid only.** The voice engine is AnkiDroid's JS API (TTS + speech
 > recognition). On Anki Desktop / AnkiWeb the script detects that the API is
 > absent and hides itself — it does nothing there. See the [FAQ](#faq--why-is-it-like-this).
+
+---
+
+## How it works
+
+AnkiVoice is not an app. It is one script that rides along with your cards.
+
+1. **The script lives in your collection.** `_ankivoice.js` sits in the media
+   folder next to your images and audio, so it syncs to every device like any
+   other media file.
+2. **A few lines in the card template start it.** Each note type you want
+   voiced gets a small *loader* at the bottom of its Front and Back templates.
+   Whenever AnkiDroid shows a card of that type, the loader runs the script.
+3. **The script reads the card and talks to AnkiDroid.** It takes the text on
+   screen and asks AnkiDroid to speak it with the phone's text-to-speech voice,
+   then asks AnkiDroid to listen with the phone's speech recognition.
+4. **Your words become actions.** "Answer" shows the back of the card, a grade
+   word presses the matching answer button, "skip" buries the card, and so on.
+   AnkiDroid does the scheduling exactly as if you had tapped.
+5. **It repeats for every card** until you say "off" or tap the bar.
+
+A review, start to finish:
+
+| Step | You hear | You say |
+|---|---|---|
+| Question side | the question | **answer** |
+| Answer side | the answer, then a chime | **again**, **hard**, **good** or **easy** |
+| | "Marked good, next review in 4 days" | *(next card starts)* |
+
+Things that follow from this design:
+
+- **Nothing is installed on the phone besides AnkiDroid.** The voices and the
+  speech recognition are the ones Android already has.
+- **Only the note types you add the loader to are voiced.** Everything else
+  behaves as before.
+- **Three languages are involved, and they are independent:** the language each
+  card side is *read* in (set per note type), the language *you speak* to it,
+  and the language the microphone listens for. See [Languages](#languages).
+- **Settings stay on the phone.** Tap the ⚙ on the bar to change them.
+- **On a computer it does nothing.** Anki Desktop and AnkiWeb do not have
+  AnkiDroid's voice features, so the script hides itself there.
 
 ---
 
@@ -51,93 +92,146 @@ always match the source at that tag.
 
 ## Requirements
 
-- **AnkiDroid 2.18+** (uses JS API contract 0.0.3).
-- AnkiDroid granted the **Microphone** permission (Android app settings).
-- AnkiDroid setting **Reviewing → "Show next review time above answer buttons"**
-  turned on (that's the data the plugin reads to announce intervals).
-- English cards by default. Each note type can say which language its front and
-  back are read in — see [Languages](#languages). Commands and prompts follow
-  the phone's language where AnkiVoice has a pack for it.
-- An Android text-to-speech engine with a voice for every language you want
-  read (Settings → Accessibility → Text-to-speech).
+- **AnkiDroid 2.18 or newer.**
+- **Microphone permission** for AnkiDroid: Android *Settings → Apps → AnkiDroid →
+  Permissions → Microphone → Allow*.
+- **Next review times switched on** in AnkiDroid, so the next interval can be
+  announced: *Settings → Appearance →* section *Study Screen → **Show button
+  time*** ("Show next review time on answer buttons"). In older AnkiDroid
+  versions the same option is under *Settings → Reviewing → Show next review
+  time above answer buttons*.
+- **A text-to-speech voice for every language your cards use:** Android
+  *Settings → Accessibility → Text-to-speech output*, then the engine's own
+  settings to install or choose voices.
 
 ## Install
 
-The plugin is one file, `_ankivoice.js`, plus a tiny loader in your templates.
-The easiest path uses **Anki Desktop** once, then syncs to your phone.
+There are two ways. Both end in the same place: the script in your collection,
+and the loader in the templates of the note types you want voiced.
 
-1. **Drop the script into your media folder.** Put `_ankivoice.js` in your
-   collection's `collection.media` folder. On Linux it's usually
-   `~/.local/share/Anki2/<profile>/collection.media/` (or under
-   `~/.var/app/net.ankiweb.Anki/...` for the Flatpak); on Windows,
-   `%APPDATA%\Anki2\<profile>\collection.media\`. Keep the leading underscore in
-   the filename — it stops Anki from treating the file as "unused" media.
-2. **Add the loader to your note types.** For each note type you want voiced,
-   open **Tools → Manage Note Types → Cards…** and paste the contents of
-   [`loader.html`](loader.html) at the very bottom of **both** the Front and Back
-   templates.
-3. **Say which languages the note type is in** (skip this for English-only
-   cards). Just above the loader, in **both** templates, add one line with your
-   own language codes:
+- [On the phone only](#install-on-the-phone-no-computer) — no computer needed.
+- [With Anki Desktop](#install-with-anki-desktop) — easier to paste into
+  templates, and the simplest way to update later.
 
-   ```html
-   <script>window.ANKIVOICE_LANG = { front: "ja-JP", back: "en-US" };</script>
-   ```
+### The snippet
 
-   The bottom of each template then looks like this:
+Both ways use this snippet. It goes at the very bottom of **both** the Front
+and the Back template of a note type.
 
-   ```html
-   <script>window.ANKIVOICE_LANG = { front: "ja-JP", back: "en-US" };</script>
-   <script>
-   (function(){ ... the loader from loader.html ... })();
-   </script>
-   ```
+```html
+<script>window.ANKIVOICE_LANG = { front: "es-ES", back: "en-US" };</script>
+<script>
+(function(){
+  function boot(){
+    fetch("_ankivoice.js")
+      .then(function(r){return r.text();})
+      .then(function(code){ (0,eval)(code); })
+      .catch(function(e){
+        var d=document.createElement("div");
+        d.style.cssText="position:fixed;bottom:0;left:0;right:0;padding:6px;background:#a00;color:#fff;z-index:9999";
+        d.textContent="AV loader failed: "+e;
+        document.body.appendChild(d);
+      });
+  }
+  if(document.readyState==="loading"){document.addEventListener("DOMContentLoaded",boot);}else{boot();}
+})();
+</script>
+```
 
-   More examples and the other ways to set a language are under
-   [Languages](#languages).
-4. **Sync.** Sync the desktop, then sync AnkiDroid. Study a voiced deck on the
-   phone — the bar appears at the bottom and it starts reading.
-5. **Check it.** The bar should show the version (`AnkiVoice v40`). Tap ⚙: the
-   box at the top lists the language each side is read in and where that came
-   from.
+- The **first line** says which language each side is read in. Replace the two
+  codes with yours (`front` is the question, `back` is the answer; codes are
+  listed under [Language codes](#language-codes)). If all your cards are in one
+  language, you can delete that line and choose the language in ⚙ instead.
+- The **rest** is the loader. Copy it exactly; it never needs changing.
 
-The phone also needs a text-to-speech voice for every language you use: Android
-**Settings → Accessibility → Text-to-speech output**, then the engine's settings
-to install or pick voices. If a voice is missing, the ⚙ box shows a ⚠ line.
+### Install on the phone (no computer)
+
+1. **Get the test deck.** On the phone, open the
+   [latest release](https://github.com/PawgChamps/Ankivoice/releases/latest) and
+   download `AnkiVoice-test.apkg`.
+2. **Import it.** Open the downloaded file and choose AnkiDroid, or in AnkiDroid
+   use *⋮ → Import*. This puts the script into your collection, together with a
+   few demo cards in a deck called **AnkiVoice Test**.
+3. **Try it.** Study the AnkiVoice Test deck. A bar appears at the bottom and
+   the card is read aloud. Say **answer**, then a grade.
+4. **Add it to your own cards.** In AnkiDroid's deck list tap *⋮ → Manage note
+   types*, open the note type your cards use, and choose **Edit cards**. (The
+   same editor opens from the **Cards** button at the bottom of any note's edit
+   screen.)
+   - On the **Front** template, scroll to the end and paste
+     [the snippet](#the-snippet).
+   - Do the same on the **Back** template.
+   - Change the two language codes in the first line, then save.
+5. **Repeat step 4** for every other note type you want voiced.
+
+You can delete the AnkiVoice Test deck afterwards. The script stays in your
+collection.
+
+Tip: copying the snippet is easiest from this page in the phone's browser —
+press and hold inside the grey box, choose *Select all* within it, then *Copy*.
+
+### Install with Anki Desktop
+
+1. **Put the script in your media folder.** Download `_ankivoice.js` from the
+   [latest release](https://github.com/PawgChamps/Ankivoice/releases/latest) and
+   copy it into your profile's `collection.media` folder. Keep the leading
+   underscore in the name.
+
+   | System | Usual location |
+   |---|---|
+   | Windows | `%APPDATA%\Anki2\<profile>\collection.media\` |
+   | macOS | `~/Library/Application Support/Anki2/<profile>/collection.media/` |
+   | Linux | `~/.local/share/Anki2/<profile>/collection.media/` |
+   | Linux (Flatpak) | `~/.var/app/net.ankiweb.Anki/data/Anki2/<profile>/collection.media/` |
+
+2. **Add the snippet to your note types.** *Tools → Manage Note Types*, select
+   the note type, *Cards…*. Paste [the snippet](#the-snippet) at the very bottom
+   of the **Front Template** and again at the bottom of the **Back Template**.
+   Change the two language codes in the first line.
+3. **Sync** Anki Desktop, then sync AnkiDroid.
+4. **Study on the phone.** The bar appears at the bottom and the card is read.
+
+### Check that it works
+
+- The bar at the bottom shows the version before a card starts, e.g.
+  `AnkiVoice v40`.
+- Tap **⚙** on the bar. The box at the top lists the language each side is
+  read in and where that came from. A ⚠ line means the phone has no voice for
+  that language.
 
 ### Updating
 
-Because the templates just reference `_ankivoice.js` by name, **you never edit
-templates again**. To update: replace `_ankivoice.js` in `collection.media`
-(overwrite it), then sync. Sync propagates the changed file to the phone.
+The templates only refer to the file by name, so **you never edit templates
+again**. Updating means replacing the one file.
 
-> Prefer to test first? `demo/build_apkg.py` builds a small `.apkg` test deck
-> (with the script bundled as media) that you can import on the phone. Every CI
-> run also attaches a freshly built one under **Artifacts**.
->
-> **Caveat if you already have AnkiVoice installed:** importing the deck will
-> *not* replace your existing `_ankivoice.js`. Anki renames a colliding media
-> file rather than overwriting it, so the templates keep loading the copy you
-> already had and you end up testing the old script without noticing. The deck
-> is for a *first* look; to update an existing install, replace the file on
-> desktop and sync. Check which version is actually running by looking at the
-> bar ("AnkiVoice v30") or the settings panel header.
+- **With Anki Desktop:** overwrite `_ankivoice.js` in `collection.media` with
+  the new one, sync the desktop, then sync AnkiDroid.
+- **On the phone only:** importing a newer test deck does **not** update the
+  script. Anki keeps the copy you already have and stores the new one under
+  another name, so the old version keeps running. You have to replace the file
+  itself: it is in the `collection.media` folder inside the folder shown at
+  AnkiDroid *Settings → Advanced → AnkiDroid directory*. A file manager can do
+  that when the folder is in shared storage; on recent Android versions it is
+  often inside app-private storage that file managers cannot open, and then a
+  computer is needed for the update.
+
+Either way, check the version on the bar afterwards.
 
 ## Languages
 
 **In short:** set the language you speak once, in the settings. Set the
 languages of the cards per note type, in its templates. The two are independent.
 
-A worked example — a phone set to Portuguese, three decks:
+An example — a phone set to Spanish, three note types:
 
-| Note type | Line in its templates | Front read in | Back read in | You say |
+| Note type | First line of the snippet | Front read in | Back read in | You say |
 |---|---|---|---|---|
-| Thai vocabulary | `{ front: "th-TH", back: "en-US" }` | Thai | English | "resposta", "bom" |
-| Goethe German | `{ front: "de-DE", back: "es-ES" }` | German | Spanish | "resposta", "bom" |
-| General knowledge | *(none)* | ⚙ *Speech language* | ⚙ *Speech language* | "resposta", "bom" |
+| French vocabulary | `{ front: "fr-FR", back: "es-ES" }` | French | Spanish | "respuesta", "bien" |
+| English phrases | `{ front: "en-US", back: "es-ES" }` | English | Spanish | "respuesta", "bien" |
+| Anything else | *(line left out)* | ⚙ *Speech language* | ⚙ *Speech language* | "respuesta", "bien" |
 
-All three can come up in one review session; each card is read in its own
-languages and the commands stay Portuguese throughout.
+All three can come up in one review session. Each card is read in its own
+languages, and the commands stay in Spanish throughout.
 
 There are three separate languages, and they do not have to match:
 
@@ -147,37 +241,27 @@ There are three separate languages, and they do not have to match:
 | **Command language** | AnkiVoice's own prompts, and the words it listens for | ⚙ *Command language* (default: the phone's language) |
 | **Recognition language** | what the microphone expects to hear | ⚙ *Recognition language* (default: same as commands) |
 
-So a phone set to Portuguese can review a deck with Thai on the front and
-English on the back, and still be told "Avalie" and answer "bom".
-
 ### Card language: per side, per note type
 
-Paste one line just above the loader, in **both** the Front and Back template,
-with the same content in each:
+This is the first line of [the snippet](#the-snippet). It goes just above the
+loader, in **both** the Front and Back template, with the same content in each:
 
 ```html
-<script>window.ANKIVOICE_LANG = { front: "ja-JP", back: "en-US" };</script>
+<script>window.ANKIVOICE_LANG = { front: "LANGUAGE-OF-THE-QUESTION", back: "LANGUAGE-OF-THE-ANSWER" };</script>
 ```
 
 `front` is the language of the question side. `back` is the language of the
-answer — the text that was not already on the question side. Some ready-made
-ones:
+answer — the text that was not already on the question side. For example:
 
 ```html
-<!-- Japanese -> English -->
-<script>window.ANKIVOICE_LANG = { front: "ja-JP", back: "en-US" };</script>
+<!-- Question in Spanish, answer in English -->
+<script>window.ANKIVOICE_LANG = { front: "es-ES", back: "en-US" };</script>
 
-<!-- German -> English -->
-<script>window.ANKIVOICE_LANG = { front: "de-DE", back: "en-US" };</script>
+<!-- The reverse card: question in English, answer in Spanish -->
+<script>window.ANKIVOICE_LANG = { front: "en-US", back: "es-ES" };</script>
 
-<!-- English -> Japanese (the reverse card of the first one) -->
-<script>window.ANKIVOICE_LANG = { front: "en-US", back: "ja-JP" };</script>
-
-<!-- Both sides in one language -->
+<!-- Both sides in the same language -->
 <script>window.ANKIVOICE_LANG = "fr-FR";</script>
-
-<!-- Thai -> English, and this note type's commands are heard as Portuguese -->
-<script>window.ANKIVOICE_LANG = { front: "th-TH", back: "en-US", stt: "pt-BR" };</script>
 ```
 
 Notes:
@@ -185,10 +269,27 @@ Notes:
 - A note type with two card types in opposite directions needs the line in each
   card type's templates, with `front` and `back` swapped.
 - Leave a side out and it uses ⚙ *Speech language*.
-- Codes are forgiving: `ja`, `ja_JP` and `ja-JP` all work. A bare language gets
-  its usual region (`en` → `en-US`, `de` → `de-DE`, `pt` → `pt-BR`); write the
-  region if you want another. Something that is not a language code is ignored.
-- `stt` is optional and rarely needed; without it recognition follows ⚙.
+- A third, optional entry sets the microphone language for this note type only:
+  `{ front: "fr-FR", back: "en-US", stt: "es-ES" }`. It is rarely needed;
+  without it recognition follows ⚙.
+
+### Language codes
+
+A code is a language plus a region, such as `en-US`. Common ones:
+
+| | | | |
+|---|---|---|---|
+| `en-US` English (US) | `en-GB` English (UK) | `es-ES` Spanish | `fr-FR` French |
+| `de-DE` German | `it-IT` Italian | `pt-BR` Portuguese (Brazil) | `nl-NL` Dutch |
+| `pl-PL` Polish | `ru-RU` Russian | `sv-SE` Swedish | `tr-TR` Turkish |
+| `ja-JP` Japanese | `ko-KR` Korean | `zh-CN` Chinese | `ar-SA` Arabic |
+| `hi-IN` Hindi | `he-IL` Hebrew | `cs-CZ` Czech | `el-GR` Greek |
+| `id-ID` Indonesian | `vi-VN` Vietnamese | `fil-PH` Filipino | `th-TH` Thai |
+
+Any other code your text-to-speech engine supports works too. Codes are
+forgiving: `es`, `es_ES` and `es-ES` all work. A bare language gets its usual
+region (`en` → `en-US`, `pt` → `pt-BR`); write the region if you want another,
+such as `es-MX` or `pt-PT`. Something that is not a language code is ignored.
 
 ### Card language: one chunk at a time
 
@@ -196,8 +297,8 @@ Standard HTML `lang` attributes are honoured anywhere inside the card, and win
 over the template line. Use them in a template around a field:
 
 ```html
-{{English}}
-<div lang="ja">{{Reading}}</div>
+{{Meaning}}
+<div lang="fr">{{Example}}</div>
 ```
 
 or inside a field's own HTML for a single word: `It means <span lang="de">Hund</span>.`
@@ -207,9 +308,9 @@ language; the text around it stays in the side's language.
 ### Card language: different for each note
 
 The template line applies to every card of a note type. If one note type holds
-cards in several languages — a generic "Basic" used for both Thai and German —
-give it a field for the language (say `Lang`, containing `th` or `de` on each
-note) and use it in the template:
+cards in several languages — a generic "Basic" used for both French and
+German, say — give it a field for the language (call it `Lang`, containing `fr`
+or `de` on each note) and use it in the template:
 
 ```html
 <div lang="{{Lang}}">{{Front}}</div>
@@ -522,13 +623,13 @@ This plugin looks the way it does because of hard constraints in how AnkiDroid
 exposes speech to card JavaScript. If something feels like a workaround, it
 probably is — here's the reasoning.
 
-**My Japanese card is read by an English voice (or the other way round).**
+**A card is read in the wrong language or by the wrong voice.**
 Open ⚙ and read the box at the top. It shows, for the side you are on, the
 language of every chunk that was read and where it came from.
 
 - *global setting* next to the card text means the template line is missing or
-  misspelled on that note type — check it is in **both** the Front and Back
-  template, above the loader.
+  misspelled on that note type — check the first line of the snippet is in
+  **both** the Front and Back template, above the loader.
 - A ⚠ line means the phone's text-to-speech engine has no voice for that
   language, so it carried on in the previous one. Install the voice in Android's
   text-to-speech settings.
@@ -538,7 +639,7 @@ language of every chunk that was read and where it came from.
 **Which voice reads the cards?**
 Whatever Android text-to-speech engine the phone is set to use (Google's, the
 maker's, or one you installed). AnkiVoice only asks for a language, such as
-`ja-JP`; the engine picks the voice. To change the voice for a language, change
+`fr-FR`; the engine picks the voice. To change the voice for a language, change
 it in that engine's settings.
 
 **I still hear "Mark it." instead of the chime.**
@@ -549,6 +650,18 @@ cue. ⚙ → *Chime instead of "Mark it"* chooses between the two.
 
 **It speaks to me in my phone's language, and I want English.**
 ⚙ → *Command language* → `en-US`.
+
+**No bar appears at the bottom of the card.**
+The script is not running. Check, in this order: the card's note type has the
+snippet in both templates; `_ankivoice.js` is in the collection (on a phone-only
+install, the test deck was imported); AnkiDroid is version 2.18 or newer. If a
+red "AV loader failed" bar appears instead, the snippet is there but the script
+file is missing. AnkiVoice has only been used with AnkiDroid's standard study
+screen; if you have switched on the experimental *New study screen*, try with
+it off.
+
+**The next interval is not announced after grading.**
+Turn on *Settings → Appearance → Study Screen → Show button time* in AnkiDroid.
 
 **Can it use Anki's own `{{tts}}` tags?**
 No — see [Anki's own `{{tts}}` tags](#ankis-own-tts-tags).

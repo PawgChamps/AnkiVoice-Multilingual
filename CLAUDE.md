@@ -113,6 +113,8 @@ answer → say "Mark it" → short delay → listen → a grade word calls
   escape (CI enforces this), because the file is fetched and `eval`'d and has
   been mangled by encoding round-trips before.
 - **Fixed filename `_ankivoice.js`.** Never rename — templates reference it.
+- **The loader is printed in the README too** ("The snippet"), so phone-only
+  users can copy it. A test fails if it drifts from `loader.html`.
 - **Version** lives in the header comment (`VERSION:`) and `CHANGELOG.md`. Bump
   both on any change.
 - **Never hard-code a spoken string.** Add it to `AV_L10N.en.s` and every other
@@ -129,7 +131,9 @@ answer → say "Mark it" → short delay → listen → a grade word calls
   bare name.
 - `ankiGetNextTimeN` returns **raw response text**; `JSON.parse` it, read
   `.value`.
-- Intervals need Reviewing → "Show next review time above answer buttons" ON.
+- Intervals need AnkiDroid's Settings → Appearance → Study Screen → "Show button
+  time" ON (older versions: Reviewing → "Show next review time above answer
+  buttons").
 - `SpeechRecognizer` is leaked by AnkiDroid — never start a second mic without
   stopping the first; the `listening` flag + stop-on-new-flow handle it.
 - Each card side is a **full page reload** — no memory persists across sides.

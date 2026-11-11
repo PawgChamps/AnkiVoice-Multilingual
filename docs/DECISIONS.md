@@ -57,7 +57,8 @@ verified by reading the AnkiDroid source (branch `v2.24.0`).
   `js-api.js` special-cases `nextTime`/`deckName` to skip JSON parsing, so the
   caller must `JSON.parse` it and read `.value` itself.
 - **Interval data requires a setting.** `nextTime1..4` are only populated when
-  Reviewing → "Show next review time above answer buttons" is enabled; otherwise
+  Settings → Appearance → Study Screen → "Show button time" is enabled (older
+  versions: Reviewing → "Show next review time above answer buttons"); otherwise
   they return empty strings.
 - **`ankiSttResult` hands back a LIST of competing hypotheses**, not one string
   (`["hard", "heart", "art"]`). Two bugs came out of treating it as one blob:
