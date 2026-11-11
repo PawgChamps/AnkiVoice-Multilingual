@@ -1,6 +1,6 @@
-# AnkiVoice
+# AnkiVoice Multilingual
 
-[![CI](https://github.com/PawgChamps/Ankivoice/actions/workflows/ci.yml/badge.svg)](https://github.com/PawgChamps/Ankivoice/actions/workflows/ci.yml)
+[![CI](https://github.com/PawgChamps/AnkiVoice-Multilingual/actions/workflows/ci.yml/badge.svg)](https://github.com/PawgChamps/AnkiVoice-Multilingual/actions/workflows/ci.yml)
 
 Hands-free plugin for **AnkiDroid**. It reads each card aloud, listens for
 your voice, and lets you drive a whole review session without touching the phone:
@@ -20,7 +20,9 @@ different languages — a Spanish question, an English answer — and you keep t
 to it in your own language, whatever the cards are in. See
 [Languages](#languages).
 
-> **This is a fork** of [tylerecouture/Ankivoice](https://github.com/tylerecouture/Ankivoice).
+> **This is AnkiVoice Multilingual, a fork** of [tylerecouture/Ankivoice](https://github.com/tylerecouture/Ankivoice).
+> The plugin itself is still called AnkiVoice and its file is still
+> `_ankivoice.js`, so it is a drop-in replacement for the original.
 > It adds per-side card languages (v39), commands and prompts in the phone's
 > language (v39) and the grading chime (v40). Those are only in the releases
 > of this fork.
@@ -77,7 +79,7 @@ Things that follow from this design:
 
 ## Download
 
-Every version is published as a [GitHub release](https://github.com/PawgChamps/Ankivoice/releases/latest),
+Every version is published as a [GitHub release](https://github.com/PawgChamps/AnkiVoice-Multilingual/releases/latest),
 with two files attached:
 
 | File | For |
@@ -147,7 +149,7 @@ and the Back template of a note type.
 ### Install on the phone (no computer)
 
 1. **Get the test deck.** On the phone, open the
-   [latest release](https://github.com/PawgChamps/Ankivoice/releases/latest) and
+   [latest release](https://github.com/PawgChamps/AnkiVoice-Multilingual/releases/latest) and
    download `AnkiVoice-test.apkg`.
 2. **Import it.** Open the downloaded file and choose AnkiDroid, or in AnkiDroid
    use *⋮ → Import*. This puts the script into your collection, together with a
@@ -173,7 +175,7 @@ press and hold inside the grey box, choose *Select all* within it, then *Copy*.
 ### Install with Anki Desktop
 
 1. **Put the script in your media folder.** Download `_ankivoice.js` from the
-   [latest release](https://github.com/PawgChamps/Ankivoice/releases/latest) and
+   [latest release](https://github.com/PawgChamps/AnkiVoice-Multilingual/releases/latest) and
    copy it into your profile's `collection.media` folder. Keep the leading
    underscore in the name.
 

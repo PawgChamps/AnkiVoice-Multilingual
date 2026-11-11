@@ -4,7 +4,7 @@
 ### Installing
 
 **New installs only:** import `AnkiVoice-test.apkg` on the phone to try it out,
-then follow the [README](https://github.com/PawgChamps/Ankivoice#install) to
+then follow the [README](https://github.com/PawgChamps/AnkiVoice-Multilingual#install) to
 add the loader to your own note types.
 
 **Updating an existing install:** do NOT rely on importing the `.apkg` to update.
